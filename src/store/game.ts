@@ -16,6 +16,9 @@ import { createRng, randomSeedText, type RNG } from '../game/rng'
 import { generateCloser, generateLineup, type BatterDef, type PitcherDef } from '../game/roster'
 import { describeTake, zoneFor } from '../game/strikeZone'
 import { effectiveCallWindowMs, effectiveTimeScale, useSettings } from './settings'
+import type { RoomSnapshot } from '../multiplayer/protocol'
+
+export type GameMode = 'single' | 'multiplayer'
 
 export type Phase =
   | 'menu'
@@ -72,6 +75,7 @@ export interface TickerItem {
 }
 
 interface GameState {
+  mode: GameMode
   phase: Phase
   phaseStart: number
   phaseDur: number
@@ -109,6 +113,7 @@ interface GameState {
   setPaused: (p: boolean, menu?: boolean) => void
   toggleDebug: () => void
   setDebug: (patch: Partial<Pick<GameState, 'slowMo' | 'autoCall' | 'orbit' | 'forced'>>) => void
+  hydrateRemote: (snapshot: RoomSnapshot, serverNow: number) => void
 }
 
 let bannerKey = 1
@@ -387,6 +392,7 @@ export const useGame = create<GameState>()((set, get) => {
   }
 
   return {
+    mode: 'single',
     phase: 'menu',
     phaseStart: 0,
     phaseDur: 0,
@@ -425,6 +431,7 @@ export const useGame = create<GameState>()((set, get) => {
       rng = createRng('game:' + seedText)
       const scenario = createScenario(rng)
       set({
+        mode: 'single',
         seedText,
         intro: scenario.intro,
         sit: scenario.situation,
@@ -462,6 +469,7 @@ export const useGame = create<GameState>()((set, get) => {
 
     tick: (t) => {
       const s = get()
+      if (s.mode === 'multiplayer') return
       if (s.paused || s.phase === 'menu' || s.phase === 'inningOver') return
       const elapsed = t - s.phaseStart
 
@@ -503,6 +511,7 @@ export const useGame = create<GameState>()((set, get) => {
 
     makeCall: (call) => {
       const s = get()
+      if (s.mode === 'multiplayer') return
       if (s.phase !== 'call' || s.paused) return
       gradeAndReveal(call, false)
     },
@@ -545,6 +554,45 @@ export const useGame = create<GameState>()((set, get) => {
 
     toggleDebug: () => set((s) => ({ debugOpen: !s.debugOpen })),
     setDebug: (patch) => set(patch),
+    hydrateRemote: (snapshot, serverNow) => {
+      const perfNow = performance.now()
+      const toPerf = (epoch: number): number => epoch ? perfNow + (epoch - serverNow) : 0
+      const remotePhase: Phase =
+        snapshot.phase === 'windup' ? 'windup' :
+        snapshot.phase === 'flight' ? 'flight' :
+        snapshot.phase === 'call' ? 'call' :
+        snapshot.phase === 'reveal' ? 'reveal' :
+        snapshot.phase === 'swingResult' ? 'swingResult' :
+        snapshot.phase === 'seriesComplete' || snapshot.phase === 'roleSwap' || snapshot.phase === 'roundComplete' ? 'inningOver' :
+        snapshot.phase === 'lobby' ? 'menu' : 'prePitch'
+      const active: ActivePitch | null = snapshot.active ? {
+        ...snapshot.active,
+        flightStartMs: toPerf(snapshot.active.flightStartAt),
+        hitStartMs: toPerf(snapshot.active.hitStartAt),
+      } : null
+      set({
+        mode: 'multiplayer',
+        phase: remotePhase,
+        phaseStart: toPerf(snapshot.phaseStartedAt),
+        phaseDur: snapshot.phaseDeadline === null ? Infinity : Math.max(1, snapshot.phaseDeadline - snapshot.phaseStartedAt),
+        paused: snapshot.status === 'disconnectPaused',
+        pausedAt: snapshot.status === 'disconnectPaused' ? perfNow : 0,
+        pauseMenuOpen: false,
+        seedText: snapshot.seedText,
+        intro: snapshot.intro,
+        sit: structuredClone(snapshot.sit),
+        lineup: snapshot.lineup,
+        pitcher: snapshot.pitcher,
+        active,
+        reveal: snapshot.reveal,
+        banner: snapshot.banner,
+        ticker: snapshot.ticker,
+        calls: snapshot.calls,
+        callDeadline: snapshot.callDeadline === null ? null : toPerf(snapshot.callDeadline),
+        report: snapshot.roundSummaries[snapshot.roundSummaries.length - 1]?.umpiring ?? null,
+        pendingAtBatOver: snapshot.pendingAtBatOver,
+      })
+    },
   }
 })
 

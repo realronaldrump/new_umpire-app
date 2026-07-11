@@ -1,10 +1,11 @@
 import { useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { PLATE_DEPTH_FT, PLATE_HALF_WIDTH_FT } from '../game/constants'
+import { DIFFICULTY, PLATE_DEPTH_FT, PLATE_HALF_WIDTH_FT } from '../game/constants'
 import { zoneFor } from '../game/strikeZone'
 import { useGame } from '../store/game'
 import { useSettings, zoneGhostVisible } from '../store/settings'
+import { multiplayerRole, useMultiplayer } from '../multiplayer/store'
 
 /**
  * Faint in-world rulebook volume over the exact pentagonal plate footprint.
@@ -49,7 +50,12 @@ export function ZoneGhost() {
     const s = useSettings.getState()
     const batter = g.active?.batter ?? g.lineup[g.sit.batterIdx]
     const live = g.phase === 'prePitch' || g.phase === 'windup' || g.phase === 'flight' || g.phase === 'call'
-    const show = Boolean(batter) && ((zoneGhostVisible(s) && live && !g.paused) || g.debugOpen)
+    const multiplayer = useMultiplayer.getState()
+    const multiplayerVisible = g.mode === 'multiplayer' && multiplayer.snapshot
+      ? DIFFICULTY[multiplayer.snapshot.difficulty].zoneVisibleDuringPitch && multiplayerRole(multiplayer.snapshot, multiplayer.playerId) === 'umpire'
+      : false
+    const configuredVisible = g.mode === 'multiplayer' ? multiplayerVisible : zoneGhostVisible(s)
+    const show = Boolean(batter) && ((configuredVisible && live && !g.paused) || g.debugOpen)
     group.visible = show
     if (!show || !batter) return
     const zone = zoneFor(batter)

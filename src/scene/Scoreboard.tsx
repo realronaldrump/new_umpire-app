@@ -80,7 +80,7 @@ export function Scoreboard() {
 
       ctx.textAlign = 'left'
       ctx.fillStyle = '#42556c'
-      ctx.fillText('IRONBEND at CASCADIA', 48, 392)
+      ctx.fillText('RONALD RUMPS at MICHELLE OBAMA MANS', 48, 392)
 
       if (texRef.current) texRef.current.needsUpdate = true
     }

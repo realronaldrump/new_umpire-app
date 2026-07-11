@@ -4,7 +4,7 @@ import {
   MPH_TO_FTPS,
 } from './constants'
 import { PITCH_TYPES, type PitchTypeDef, type PitchTypeKey } from './pitchTypes'
-import { clamp, type RNG } from './rng'
+import { clamp, lerp, type RNG } from './rng'
 import {
   isBorderline,
   trajectoryZoneMetrics,
@@ -96,9 +96,16 @@ export interface PitchContext {
   strikes: number
   borderlineBias: number
   forced?: { typeKey: PitchTypeKey; loc: 'center' | 'edge' | 'chase' | 'wild' } | null
+  /** A multiplayer pitcher's committed pitch, target, and timing-meter quality. */
+  player?: {
+    typeKey: PitchTypeKey
+    target: { u: number; v: number }
+    commandQuality: number
+  } | null
 }
 
 function choosePitchType(rng: RNG, pitcher: PitcherPhysique, ctx: PitchContext): PitchTypeDef {
+  if (ctx.player) return PITCH_TYPES[ctx.player.typeKey]
   if (ctx.forced) return PITCH_TYPES[ctx.forced.typeKey]
   const ahead = ctx.strikes > ctx.balls || ctx.strikes === 2
   const behind = ctx.balls > ctx.strikes && ctx.balls >= 2
@@ -135,7 +142,10 @@ function chooseCrossingPoint(
   // Intended target in normalized zone units (u horizontal, v vertical; ±1 = zone edge).
   let u: number
   let v: number
-  if (ctx.forced) {
+  if (ctx.player) {
+    u = clamp(ctx.player.target.u, -1.5, 1.5)
+    v = clamp(ctx.player.target.v, -1.5, 1.5)
+  } else if (ctx.forced) {
     const loc = ctx.forced.loc
     if (loc === 'center') { u = 0; v = 0 }
     else if (loc === 'edge') { u = rng.pick([-0.95, 0.95]); v = rng.range(-0.9, 0.6) }
@@ -163,13 +173,17 @@ function chooseCrossingPoint(
     z: zone.centerZFt + v * zone.halfHeightFt,
   }
 
-  const wild = !ctx.forced && rng.chance(0.04)
-  const sigma = 0.21 * def.wildness * pitcher.commandMult * (wild ? 3.2 : 1)
+  const quality = clamp(ctx.player?.commandQuality ?? 1, 0, 1)
+  const wild = ctx.player
+    ? quality < 0.12 && rng.chance(0.35)
+    : !ctx.forced && rng.chance(0.04)
+  const commandScale = ctx.player ? lerp(2.4, 0.45, quality) : 1
+  const sigma = 0.21 * def.wildness * pitcher.commandMult * commandScale * (wild ? 3.2 : 1)
   let x = intended.x + rng.gauss(0, sigma)
   let z = intended.z + rng.gauss(0, sigma * 1.1)
 
   // Steer a share of pitches right onto an edge so calls stay interesting.
-  if (!wild && !ctx.forced && rng.chance(ctx.borderlineBias)) {
+  if (!wild && !ctx.forced && !ctx.player && rng.chance(ctx.borderlineBias)) {
     const edge = rng.weighted([
       ['low', 0.34],
       ['away', 0.27],

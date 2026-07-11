@@ -5,6 +5,7 @@ import { AWAY_TEAM, HOME_TEAM } from '../game/roster'
 import { useGame } from '../store/game'
 import { useSettings } from '../store/settings'
 import { useUi } from '../store/ui'
+import { useMultiplayer } from '../multiplayer/store'
 
 const DIFF_KEYS: Difficulty[] = ['rookie', 'pro', 'legend']
 
@@ -114,7 +115,11 @@ export function StartScreen() {
           </label>
 
           <button className="btn btn--gold btn--play" onClick={play}>
-            PLAY BALL
+            SOLO NINTH
+          </button>
+
+          <button className="btn btn--versus" onClick={() => useMultiplayer.getState().openEntry()}>
+            2-PLAYER SERIES
           </button>
 
           <button

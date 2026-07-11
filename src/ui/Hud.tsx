@@ -125,6 +125,7 @@ function Ticker() {
 
 function TopButtons() {
   const paused = useGame((s) => s.paused)
+  const mode = useGame((s) => s.mode)
   const [fs, setFs] = useState(Boolean(document.fullscreenElement))
   useEffect(() => {
     const onFs = () => setFs(Boolean(document.fullscreenElement))
@@ -133,22 +134,24 @@ function TopButtons() {
   }, [])
   return (
     <div className="topbtns">
-      <button
-        className="icon-btn"
-        title={paused ? 'Resume (Esc)' : 'Pause (Esc)'}
-        onClick={() => {
-          audio.uiClick()
-          useGame.getState().setPaused(!paused, !paused)
-        }}
-      >
-        {paused ? '▶' : '❚❚'}
-      </button>
+      {mode === 'single' && (
+        <button
+          className="icon-btn"
+          title={paused ? 'Resume (Esc)' : 'Pause (Esc)'}
+          onClick={() => {
+            audio.uiClick()
+            useGame.getState().setPaused(!paused, !paused)
+          }}
+        >
+          {paused ? '▶' : '❚❚'}
+        </button>
+      )}
       <button
         className="icon-btn"
         title="Settings"
         onClick={() => {
           audio.uiClick()
-          useGame.getState().setPaused(true, false)
+          if (mode === 'single') useGame.getState().setPaused(true, false)
           useUi.getState().set({ settingsOpen: true })
         }}
       >
@@ -181,7 +184,8 @@ function PauseVeil() {
   const paused = useGame((s) => s.paused)
   const menuOpen = useGame((s) => s.pauseMenuOpen)
   const settingsOpen = useUi((s) => s.settingsOpen)
-  if (!paused || settingsOpen || !menuOpen) return null
+  const mode = useGame((s) => s.mode)
+  if (mode === 'multiplayer' || !paused || settingsOpen || !menuOpen) return null
   return (
     <div className="veil">
       <div className="veil__box panel">

@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types"],
+    "noEmit": true
+  },
+  "include": ["worker/**/*.ts", "src/game/**/*.ts", "src/multiplayer/protocol.ts", "src/multiplayer/scoring.ts"],
+  "exclude": ["src/**/*.test.ts", "worker/**/*.test.ts"]
+}

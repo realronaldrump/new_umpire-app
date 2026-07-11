@@ -41,12 +41,13 @@ export function SettingsModal() {
   const open = useUi((s) => s.settingsOpen)
   const s = useSettings()
   const phase = useGame((p) => p.phase)
+  const mode = useGame((p) => p.mode)
   if (!open) return null
 
   const close = () => {
     audio.uiClick()
     useUi.getState().set({ settingsOpen: false })
-    if (phase !== 'menu' && phase !== 'inningOver') useGame.getState().setPaused(false)
+    if (mode !== 'multiplayer' && phase !== 'menu' && phase !== 'inningOver') useGame.getState().setPaused(false)
   }
 
   const inGame = phase !== 'menu' && phase !== 'inningOver'

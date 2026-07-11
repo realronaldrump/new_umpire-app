@@ -5,11 +5,12 @@ import { KZone, VerdictChip } from './ReplayCard'
 
 export function EndScreen() {
   const phase = useGame((s) => s.phase)
+  const mode = useGame((s) => s.mode)
   const report = useGame((s) => s.report)
   const sit = useGame((s) => s.sit)
   const seed = useGame((s) => s.seedText)
   const calls = useGame((s) => s.calls)
-  if (phase !== 'inningOver' || !report) return null
+  if (mode === 'multiplayer' || phase !== 'inningOver' || !report) return null
 
   const resultLine = sit.walkOff
     ? `WALK-OFF · ${HOME_TEAM.name.toUpperCase()} WIN ${sit.homeScore}–${sit.awayScore}`

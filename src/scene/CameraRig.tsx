@@ -3,6 +3,7 @@ import { useRef } from 'react'
 import * as THREE from 'three'
 import { useGame } from '../store/game'
 import { useSettings } from '../store/settings'
+import { multiplayerRole, useMultiplayer } from '../multiplayer/store'
 
 /**
  * The umpire's eyes: in the slot over the catcher's shoulder, toward the
@@ -19,6 +20,21 @@ export function CameraRig() {
     const g = useGame.getState()
     if (g.orbit) return // debug OrbitControls owns the camera
     const s = useSettings.getState()
+
+    if (g.mode === 'multiplayer') {
+      const multiplayer = useMultiplayer.getState()
+      if (multiplayerRole(multiplayer.snapshot, multiplayer.playerId) === 'pitcher') {
+        if (camera.fov !== 48) {
+          camera.fov = 48
+          camera.updateProjectionMatrix()
+        }
+        const handOffset = g.pitcher.hand === 'R' ? 1.25 : -1.25
+        camera.position.lerp(new THREE.Vector3(handOffset, 8.2, -75), Math.min(1, delta * 3.4))
+        look.current.set(0, 2.6, 0)
+        camera.lookAt(look.current)
+        return
+      }
+    }
 
     if (camera.fov !== s.camFov) {
       camera.fov = s.camFov

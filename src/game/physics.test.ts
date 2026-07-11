@@ -125,4 +125,20 @@ describe('pitch physics', () => {
     expect(borderline / N).toBeGreaterThan(0.3)
     expect(Math.abs(EFFECTIVE_HALF_WIDTH_FT - 0.8292) < 0.001).toBe(true)
   })
+
+  it('uses multiplayer command quality to tighten a chosen target', () => {
+    const batter = { heightIn: 73, hand: 'R' as const }
+    const averageMiss = (quality: number): number => {
+      let total = 0
+      for (let i = 0; i < 250; i++) {
+        const pitch = generatePitch(createRng(`command-${quality}-${i}`), testPitcher('R'), batter, {
+          balls: 1, strikes: 1, borderlineBias: 0,
+          player: { typeKey: 'slider', target: { u: 0, v: 0 }, commandQuality: quality },
+        })
+        total += Math.hypot(pitch.cross.x - pitch.intended.x, pitch.cross.z - pitch.intended.z)
+      }
+      return total / 250
+    }
+    expect(averageMiss(1)).toBeLessThan(averageMiss(0.25) * 0.5)
+  })
 })

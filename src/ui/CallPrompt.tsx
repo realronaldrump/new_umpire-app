@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useGame } from '../store/game'
+import { multiplayerRole, useMultiplayer } from '../multiplayer/store'
 
 const RING_R = 27
 const CIRC = 2 * Math.PI * RING_R
@@ -7,6 +8,9 @@ const CIRC = 2 * Math.PI * RING_R
 /** BALL / STRIKE affordance with a countdown ring. Renders only on takes. */
 export function CallPrompt() {
   const phase = useGame((s) => s.phase)
+  const mode = useGame((s) => s.mode)
+  const snapshot = useMultiplayer((s) => s.snapshot)
+  const playerId = useMultiplayer((s) => s.playerId)
   const ringRef = useRef<SVGCircleElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -28,8 +32,11 @@ export function CallPrompt() {
     return () => cancelAnimationFrame(raf)
   }, [phase])
 
-  if (phase !== 'call') return null
-  const makeCall = useGame.getState().makeCall
+  if (phase !== 'call' || (mode === 'multiplayer' && multiplayerRole(snapshot, playerId) !== 'umpire')) return null
+  const makeCall = (call: 'ball' | 'strike') => {
+    if (mode === 'multiplayer') useMultiplayer.getState().call(call)
+    else useGame.getState().makeCall(call)
+  }
 
   return (
     <div className="callprompt" ref={wrapRef}>
