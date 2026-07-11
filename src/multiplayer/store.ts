@@ -92,6 +92,11 @@ export const useMultiplayer = create<MultiplayerState>()((set, get) => ({
   leave: () => leaveRoom(set),
 }))
 
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  // Console access for debugging, mirroring window.__ump for the game store.
+  ;(window as Window & { __mp?: typeof useMultiplayer }).__mp = useMultiplayer
+}
+
 export function multiplayerRole(snapshot: RoomSnapshot | null, playerId: string | null): MultiplayerRole | null {
   if (!snapshot || !playerId) return null
   if (snapshot.pitcherId === playerId) return 'pitcher'

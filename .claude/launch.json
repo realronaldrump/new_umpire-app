@@ -9,8 +9,8 @@
     },
     {
       "name": "umpire-rooms",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:worker"],
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "export PATH=\"$HOME/.nvm/versions/node/v22.19.0/bin:$PATH\" && npm run dev:worker"],
       "port": 8787
     }
   ]
