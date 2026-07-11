@@ -6,7 +6,7 @@ import {
 } from './engine'
 import { generatePitch } from './physics'
 import { createRng } from './rng'
-import { generateCloser, generateLineup } from './roster'
+import { AWAY_TEAM, generateCloser, generateLineup, HOME_TEAM } from './roster'
 
 const freshSit = (over: Partial<Situation> = {}): Situation => ({
   awayScore: 4, homeScore: 3, outs: 0, balls: 0, strikes: 0,
@@ -26,6 +26,7 @@ describe('inning engine', () => {
     expect(sit.homeScore).toBe(4)
     expect(sit.over).toBe(true)
     expect(sit.walkOff).toBe(true)
+    expect(res.events.at(-1)?.text).toContain(HOME_TEAM.name)
   })
 
   it('rings up strike three and ends the inning on the third out', () => {
@@ -35,6 +36,7 @@ describe('inning engine', () => {
     expect(sit.outs).toBe(3)
     expect(sit.over).toBe(true)
     expect(sit.walkOff).toBe(false)
+    expect(res.events.at(-1)?.text).toContain(AWAY_TEAM.name)
   })
 
   it('HBP forces runners like a walk', () => {

@@ -11,6 +11,9 @@ export interface TeamDef {
   accent: string
 }
 
+/** Canonical full team label for matchup and venue displays. */
+export const teamFullName = (team: TeamDef): string => `${team.city} ${team.name}`
+
 
 export const HOME_TEAM: TeamDef = {
   city: 'Ronald', name: 'Rumps', abbr: 'RUM',

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { AWAY_TEAM, HOME_TEAM } from '../game/roster'
+import { AWAY_TEAM, HOME_TEAM, teamFullName } from '../game/roster'
 import { useGame } from '../store/game'
 import { S } from './coords'
 
@@ -36,7 +36,7 @@ export function Scoreboard() {
       ctx.textAlign = 'left'
       ctx.font = '700 44px "Archivo", sans-serif'
       ctx.fillStyle = '#8fa4bd'
-      ctx.fillText('VOYAGER PARK', 48, 62)
+      ctx.fillText(`${HOME_TEAM.name.toUpperCase()} PARK`, 48, 62)
       ctx.textAlign = 'right'
       ctx.font = '600 34px "Archivo", sans-serif'
       ctx.fillText('BOT 9', W - 48, 62)
@@ -80,7 +80,11 @@ export function Scoreboard() {
 
       ctx.textAlign = 'left'
       ctx.fillStyle = '#42556c'
-      ctx.fillText('RONALD RUMPS at MICHELLE OBAMA MANS', 48, 392)
+      ctx.fillText(
+        `${teamFullName(AWAY_TEAM)} at ${teamFullName(HOME_TEAM)}`.toUpperCase(),
+        48,
+        392,
+      )
 
       // The big board goes red while the robot zone reviews a challenge.
       if (s.phase === 'challenge' || s.phase === 'absReveal') {

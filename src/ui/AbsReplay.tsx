@@ -34,7 +34,8 @@ export function AbsReplay() {
     const game = useGame.getState()
     const live = game.absChallenge
     if (game.mode !== 'multiplayer' || !live || live.verdictPlayed || elapsed < TIMING.absTrackMs) return
-    audio.absVerdict(live.overturned)
+    // ABS applies truth: the home (batting) crowd wins exactly when it's a ball.
+    audio.absVerdict(!live.truthStrike)
     useGame.setState({ absChallenge: { ...live, verdictPlayed: true } })
   }, [elapsed])
 
@@ -157,7 +158,11 @@ export function AbsReplay() {
         </div>
 
         <footer className="abs-board__foot">
-          <span className="abs-board__readout">{verdict ? (overturned ? 'CALL REVERSED — THE PARK ERUPTS' : 'CHALLENGE LOST — BOOS RAIN DOWN') : readout}</span>
+          <span className="abs-board__readout">
+            {!verdict
+              ? readout
+              : `${overturned ? 'CALL REVERSED' : 'CHALLENGE LOST'} — ${challenge.truthStrike ? 'BOOS RAIN DOWN' : 'THE PARK ERUPTS'}`}
+          </span>
           <span className="abs-board__pips" aria-label={`${pipsLeft} of ${challenge.challengesMax} challenges remaining`}>
             CHALLENGES {Array.from({ length: challenge.challengesMax }, (_, i) => (
               <i key={i} className={i < pipsLeft ? 'on' : ''} />

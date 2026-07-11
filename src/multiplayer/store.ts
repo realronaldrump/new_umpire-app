@@ -260,9 +260,12 @@ function playRemoteAudio(previous: RoomSnapshot | null, next: RoomSnapshot): voi
   if (next.phase === 'challenge' && previous.phase !== 'challenge') audio.challengeBuzz()
   if (next.phase === 'absReveal' && previous.phase !== 'absReveal') audio.absTracking()
   if (next.phase === 'reveal' && previous.phase === 'absReveal' && previous.absChallenge && !useGame.getState().absChallenge?.verdictPlayed) {
-    audio.absVerdict(previous.absChallenge.overturned)
+    // Backup if the tab slept through the verdict beat; truth call sets the mood.
+    audio.absVerdict(!previous.absChallenge.truthStrike)
   }
-  if (next.phase === 'reveal' && next.reveal && !next.reveal.record.hesitated && !next.reveal.record.challenged) {
+  if (next.phase === 'reveal' && next.reveal && !next.reveal.record.hesitated && !next.reveal.record.challenged
+    && previous.phase !== 'challengeWindow') {
+    // (An unchallenged window already barked "ball" when the window opened.)
     audio.stopWhoosh()
     audio.umpCall(next.reveal.record.playerCall, useSettings.getState().umpVoice)
   }

@@ -311,15 +311,7 @@ export function Batter({ batter }: { batter: BatterDef }) {
             const shinTo: [number, number, number] = [kneeX, kneeY, 0.04]
             return (
               <group key={side}>
-                {/* Thigh with side-seam piping */}
                 <StaticSegment from={[hipX, hipY, 0]} to={shinTo} radius={0.2 * body} color={PANT} />
-                <StaticSegment
-                  from={[hipX + side * 0.17 * body, hipY - 0.05, 0]}
-                  to={[kneeX + side * 0.16 * body, kneeY + 0.06, 0.04]}
-                  radius={0.022}
-                  color={accent}
-                  roughness={0.6}
-                />
                 {/* Shin: socks when the pants are cuffed high, pants otherwise */}
                 <StaticSegment from={shinFrom} to={shinTo} radius={0.148 * body} color={sockColor} />
                 {look.highSocks && (
@@ -383,20 +375,15 @@ export function Batter({ batter }: { batter: BatterDef }) {
             <sphereGeometry args={[0.62, 18, 12]} />
             <meshStandardMaterial color={PANT} roughness={0.82} />
           </mesh>
-          <mesh position={[0, hipY + 0.18, 0]}>
-            <cylinderGeometry args={[0.43 * body, 0.43 * body, 0.11, 18]} />
+          {/* Belt hugs the torso's elliptical cross-section; buckle up front. */}
+          <mesh position={[0, hipY + 0.18, 0]} scale={[1, 1, 0.84]}>
+            <cylinderGeometry args={[0.435 * body, 0.435 * body, 0.11, 18]} />
             <meshStandardMaterial color="#171b22" roughness={0.62} />
           </mesh>
-          <mesh position={[0, hipY + 0.18, -0.42 * body]}>
+          <mesh position={[0, hipY + 0.18, -0.37 * body]}>
             <boxGeometry args={[0.14, 0.11, 0.05]} />
             <meshStandardMaterial color="#c8b070" metalness={0.65} roughness={0.3} />
           </mesh>
-          {[-0.28, 0.28].map((x) => (
-            <mesh key={x} position={[x * body, hipY + 0.18, -0.33 * body]} rotation={[0, x > 0 ? -0.7 : 0.7, 0]}>
-              <boxGeometry args={[0.05, 0.14, 0.02]} />
-              <meshStandardMaterial color={PANT} roughness={0.85} />
-            </mesh>
-          ))}
 
           {/* ---------- torso ---------- */}
           <group ref={torsoRef} position={[0, hipY + 0.17, 0]}>

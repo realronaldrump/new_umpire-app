@@ -667,7 +667,8 @@ export const useGame = create<GameState>()((set, get) => {
         case 'absReveal': {
           const c = s.absChallenge
           if (c && !c.verdictPlayed && elapsed >= TIMING.absTrackMs) {
-            audio.absVerdict(c.overturned)
+            // ABS applies truth, so the park's reaction follows the true call.
+            audio.absVerdict(!c.truthStrike)
             set({ absChallenge: { ...c, verdictPlayed: true } })
           }
           if (elapsed >= s.phaseDur) resolveChallenge()
@@ -769,7 +770,11 @@ export const useGame = create<GameState>()((set, get) => {
         challengesMax: snapshot.pitcherChallengesMax,
         defensiveChallengesLeft: snapshot.pitcherChallengesLeft,
         defensiveChallengesMax: snapshot.pitcherChallengesMax,
-        absChallenge: snapshot.absChallenge,
+        // Snapshots always carry verdictPlayed=false; keep the local flag so a
+        // mid-review snapshot can't replay the verdict audio.
+        absChallenge: snapshot.absChallenge
+          ? { ...snapshot.absChallenge, verdictPlayed: snapshot.absChallenge.verdictPlayed || (get().absChallenge?.verdictPlayed ?? false) }
+          : null,
       })
     },
   }

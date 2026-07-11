@@ -52,7 +52,7 @@ export function Pitcher({ hand }: { hand: 'R' | 'L' }) {
 
     if (g.phase === 'windup') {
       p = clamp((now - g.phaseStart) / TIMING.windupMs, 0, 1)
-    } else if (g.phase === 'flight' || g.phase === 'call' || g.phase === 'challenge' || g.phase === 'absReveal' || g.phase === 'swingResult' || g.phase === 'reveal') {
+    } else if (g.phase === 'flight' || g.phase === 'call' || g.phase === 'challengeWindow' || g.phase === 'challenge' || g.phase === 'absReveal' || g.phase === 'swingResult' || g.phase === 'reveal') {
       p = 1
       const t0 = g.active?.flightStartMs || g.phaseStart
       f = clamp((now - t0) / 600, 0, 1)

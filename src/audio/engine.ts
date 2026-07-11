@@ -395,8 +395,11 @@ class AudioEngine {
     }
   }
 
-  /** The ruling lands: home crowd erupts on an overturn, boos a lost challenge. */
-  absVerdict(overturned: boolean): void {
+  /**
+   * The ruling lands. The park reacts to what the final call means for the
+   * home (batting) side — pass true when the ruling went the hitters' way.
+   */
+  absVerdict(homeCrowdWins: boolean): void {
     if (!this.ctx || !this.sfx) return
     const t = this.ctx.currentTime
     // Verdict thunk — a low stamp under either reaction.
@@ -412,8 +415,8 @@ class AudioEngine {
     thump.start(t)
     thump.stop(t + 0.22)
 
-    if (overturned) {
-      // Free baseball for the home side — roar plus a bright little fanfare.
+    if (homeCrowdWins) {
+      // The ruling favors the home side — roar plus a bright little fanfare.
       this.swell(0.95, 3.6)
       const notes = [261.63, 329.63, 392]
       notes.forEach((f, i) => {

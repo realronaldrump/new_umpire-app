@@ -2,13 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { generatePitch } from './physics'
 import { PITCH_TYPES, type PitchTypeKey } from './pitchTypes'
 import { createRng } from './rng'
-import { generateCloser } from './roster'
+import { AWAY_TEAM, generateCloser, HOME_TEAM, teamFullName } from './roster'
 
 const FASTBALLS = new Set<PitchTypeKey>(['fourseam', 'sinker', 'cutter'])
 const BREAKERS = new Set<PitchTypeKey>([
   'slider', 'sweeper', 'slurve', 'curveball', 'knucklecurve',
 ])
 const OFFSPEED = new Set<PitchTypeKey>(['changeup', 'splitter'])
+
+describe('team labels', () => {
+  it('builds full display names from the roster definition', () => {
+    expect(teamFullName(AWAY_TEAM)).toBe(`${AWAY_TEAM.city} ${AWAY_TEAM.name}`)
+    expect(teamFullName(HOME_TEAM)).toBe(`${HOME_TEAM.city} ${HOME_TEAM.name}`)
+  })
+})
 
 describe('modern pitcher arsenals', () => {
   it('gives every generated closer four or five distinct, balanced pitches', () => {

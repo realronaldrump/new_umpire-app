@@ -276,7 +276,7 @@ export function describeTake(playerCalledStrike: boolean, metrics: ZoneMetrics):
   if (correct) {
     if (metrics.strike) {
       if (isBorderline(metrics.edgeDistIn)) return `Caught the ${metrics.nearestEdge === 'high' || metrics.nearestEdge === 'low' ? metrics.nearestEdge + ' rail' : metrics.nearestEdge + ' corner'} by ${dTxt}. Elite call.`
-      return 'Right through the window. Routine.'
+      return 'Right through the zone. Too easy.'
     }
     if (isBorderline(metrics.edgeDistIn)) return `Held firm — that missed ${EDGE_WORD[metrics.nearestEdge]} by ${dTxt}.`
     return `Comfortably ${EDGE_WORD[metrics.nearestEdge]}. Easy take.`

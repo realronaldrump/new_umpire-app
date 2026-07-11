@@ -1,5 +1,6 @@
 import type { SwingOutcome } from './batter'
 import type { RNG } from './rng'
+import { AWAY_TEAM, HOME_TEAM } from './roster'
 
 export interface Bases {
   first: boolean
@@ -80,7 +81,7 @@ function checkWalkOff(sit: Situation, events: PlayEvent[]): void {
   if (sit.homeScore > sit.awayScore) {
     sit.over = true
     sit.walkOff = true
-    events.push({ kind: 'end', text: 'WALK-OFF! The Voyagers take it!', runs: 0 })
+    events.push({ kind: 'end', text: `WALK-OFF! The ${HOME_TEAM.name} take it!`, runs: 0 })
   }
 }
 
@@ -91,7 +92,7 @@ function checkThreeOuts(sit: Situation, events: PlayEvent[]): void {
       kind: 'end',
       text: sit.awayScore === sit.homeScore
         ? 'Three away — this one is headed for extras.'
-        : 'Three away. Ballgame — the Vultures hold on.',
+        : `Three away. Ballgame — the ${AWAY_TEAM.name} hold on.`,
       runs: 0,
     })
   }

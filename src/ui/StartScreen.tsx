@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { audio } from '../audio/engine'
 import { DIFFICULTY, type Difficulty } from '../game/constants'
-import { AWAY_TEAM, HOME_TEAM } from '../game/roster'
+import { AWAY_TEAM, HOME_TEAM, teamFullName } from '../game/roster'
 import { useGame } from '../store/game'
 import { useSettings } from '../store/settings'
 import { useUi } from '../store/ui'
@@ -45,9 +45,9 @@ export function StartScreen() {
         </header>
 
         <p className="start__matchup">
-          <b style={{ color: AWAY_TEAM.accent }}>{AWAY_TEAM.city.toUpperCase()} {AWAY_TEAM.name.toUpperCase()}</b>
+          <b style={{ color: AWAY_TEAM.accent }}>{teamFullName(AWAY_TEAM).toUpperCase()}</b>
           <span> at </span>
-          <b style={{ color: HOME_TEAM.accent }}>{HOME_TEAM.city.toUpperCase()} {HOME_TEAM.name.toUpperCase()}</b>
+          <b style={{ color: HOME_TEAM.accent }}>{teamFullName(HOME_TEAM).toUpperCase()}</b>
           <span className="start__intro"> — {intro}</span>
         </p>
 
