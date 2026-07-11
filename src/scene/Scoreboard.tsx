@@ -1,0 +1,118 @@
+import { useEffect, useMemo, useRef } from 'react'
+import * as THREE from 'three'
+import { AWAY_TEAM, HOME_TEAM } from '../game/roster'
+import { useGame } from '../store/game'
+import { S } from './coords'
+
+const W = 1024
+const H = 448
+
+export function Scoreboard() {
+  const canvas = useMemo(() => {
+    const c = document.createElement('canvas')
+    c.width = W
+    c.height = H
+    return c
+  }, [])
+  const texRef = useRef<THREE.CanvasTexture | null>(null)
+  if (!texRef.current) {
+    texRef.current = new THREE.CanvasTexture(canvas)
+    texRef.current.colorSpace = THREE.SRGBColorSpace
+    texRef.current.anisotropy = 4
+  }
+
+  useEffect(() => {
+    const draw = () => {
+      const s = useGame.getState()
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.fillStyle = '#05070c'
+      ctx.fillRect(0, 0, W, H)
+      ctx.strokeStyle = '#1d2836'
+      ctx.lineWidth = 10
+      ctx.strokeRect(5, 5, W - 10, H - 10)
+
+      ctx.textBaseline = 'middle'
+      ctx.textAlign = 'left'
+      ctx.font = '700 44px "Archivo", sans-serif'
+      ctx.fillStyle = '#8fa4bd'
+      ctx.fillText('VOYAGER PARK', 48, 62)
+      ctx.textAlign = 'right'
+      ctx.font = '600 34px "Archivo", sans-serif'
+      ctx.fillText('BOT 9', W - 48, 62)
+
+      const row = (y: number, abbr: string, color: string, score: number) => {
+        ctx.textAlign = 'left'
+        ctx.fillStyle = color
+        ctx.font = '86px "Bebas Neue", sans-serif'
+        ctx.fillText(abbr, 48, y)
+        ctx.textAlign = 'right'
+        ctx.fillStyle = '#f4f7fa'
+        ctx.fillText(String(score), 400, y)
+      }
+      row(160, AWAY_TEAM.abbr, AWAY_TEAM.accent, s.sit.awayScore)
+      row(268, HOME_TEAM.abbr, HOME_TEAM.accent, s.sit.homeScore)
+
+      // Count lamps.
+      const lamp = (x: number, y: number, on: boolean, color: string) => {
+        ctx.beginPath()
+        ctx.arc(x, y, 17, 0, Math.PI * 2)
+        ctx.fillStyle = on ? color : '#1c2531'
+        ctx.fill()
+      }
+      ctx.textAlign = 'left'
+      ctx.font = '600 40px "Archivo", sans-serif'
+      ctx.fillStyle = '#8fa4bd'
+      ctx.fillText('B', 560, 150)
+      for (let i = 0; i < 3; i++) lamp(625 + i * 52, 150, s.sit.balls > i, '#43d17c')
+      ctx.fillText('S', 560, 226)
+      for (let i = 0; i < 2; i++) lamp(625 + i * 52, 226, s.sit.strikes > i, '#e8543f')
+      ctx.fillText('O', 560, 302)
+      for (let i = 0; i < 2; i++) lamp(625 + i * 52, 302, s.sit.outs > i, '#f5b942')
+
+      ctx.textAlign = 'right'
+      ctx.font = '500 30px "Archivo", sans-serif'
+      ctx.fillStyle = '#5d7188'
+      ctx.fillText(`P ${s.sit.totalPitches}`, W - 48, 150)
+      ctx.fillStyle = '#42556c'
+      ctx.font = '500 26px "Archivo", sans-serif'
+      ctx.fillText(`SEED ${s.seedText || '—'}`, W - 48, 392)
+
+      ctx.textAlign = 'left'
+      ctx.fillStyle = '#42556c'
+      ctx.fillText('IRONBEND at CASCADIA', 48, 392)
+
+      if (texRef.current) texRef.current.needsUpdate = true
+    }
+    draw()
+    const unsub = useGame.subscribe((state, prev) => {
+      if (state.sit !== prev.sit || state.seedText !== prev.seedText) draw()
+    })
+    return unsub
+  }, [canvas])
+
+  useEffect(() => {
+    const tex = texRef.current
+    return () => tex?.dispose()
+  }, [])
+
+  return (
+    <group position={S(0, 452, 52)} rotation={[0, 0, 0]}>
+      <mesh>
+        <boxGeometry args={[78, 36, 3]} />
+        <meshStandardMaterial color="#0a0e15" roughness={0.9} />
+      </mesh>
+      <mesh position={[0, 0, 1.6]}>
+        <planeGeometry args={[74, 32]} />
+        <meshBasicMaterial map={texRef.current} toneMapped={false} />
+      </mesh>
+      {/* Support pylons */}
+      {[-26, 26].map((x) => (
+        <mesh key={x} position={[x, -28, 0]}>
+          <boxGeometry args={[3, 24, 2.5]} />
+          <meshStandardMaterial color="#161c26" roughness={1} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
