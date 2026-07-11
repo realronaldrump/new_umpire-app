@@ -71,7 +71,7 @@ describe('game store state machine', () => {
 
   it('runs ABS challenges on legend: the robot zone rules, the economy holds', () => {
     useSettings.setState({ difficulty: 'legend', callWindow: 'auto', pitchSpeed: 'auto', hesitationPolicy: 'miss' })
-    useGame.getState().newGame('ABSNINE')
+    useGame.getState().newGame('ABSNINE-CHALLENGE')
     useGame.getState().setDebug({ forceChallenge: true })
     useGame.getState().playBall()
     expect(useGame.getState().challengesMax).toBe(2)
