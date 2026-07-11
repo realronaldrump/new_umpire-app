@@ -82,6 +82,7 @@ export function Scoreboard() {
       ctx.fillStyle = '#42556c'
       ctx.fillText('RONALD RUMPS at MICHELLE OBAMA MANS', 48, 392)
 
+      
       // The big board goes red while the robot zone reviews a challenge.
       if (s.phase === 'challenge' || s.phase === 'absReveal') {
         const blink = Math.floor(Date.now() / 450) % 2 === 0
