@@ -13,11 +13,11 @@ export interface TeamDef {
 
 // Fictional clubs — no real MLB marks.
 export const HOME_TEAM: TeamDef = {
-  city: 'Cascadia', name: 'Voyagers', abbr: 'CAS',
+  city: 'Cascadia', name: 'Ballot Boxers', abbr: 'CBB',
   primary: '#123b5c', accent: '#3fd9c4',
 }
 export const AWAY_TEAM: TeamDef = {
-  city: 'Ironbend', name: 'Vultures', abbr: 'IRB',
+  city: 'Ironbend', name: 'Filibusters', abbr: 'IFB',
   primary: '#3a3d47', accent: '#ff7a45',
 }
 
