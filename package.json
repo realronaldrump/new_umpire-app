@@ -16,6 +16,7 @@
     "test:worker": "vitest run --config vitest.worker.config.ts",
     "test:e2e": "playwright test",
     "test:all": "npm test && npm run test:worker",
+    "check:multiplayer-deployment": "node scripts/check-multiplayer-deployment.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:worker": "tsc -p tsconfig.worker.json --noEmit",
     "deploy:worker": "wrangler deploy"
