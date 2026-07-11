@@ -36,7 +36,8 @@ export function StartScreen() {
         <header className="start__masthead">
           <span className="start__kicker">A HOME-PLATE UMPIRE SIMULATOR</span>
           <h1 className="start__title">
-            JUDGMENT<em>CALL</em>
+            <span>BIG BEAUTIFUL</span>
+            <em>UMPIRE APP</em>
           </h1>
           <span className="start__rule" aria-hidden />
           <p className="start__tag">BOTTOM OF THE NINTH · EVERY TAKE IS YOURS TO CALL</p>

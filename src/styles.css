@@ -376,13 +376,14 @@ input, select { font-family: var(--body); }
 .start__title {
   margin: 0;
   font-family: var(--display);
-  font-size: clamp(4rem, 12vw, 8.2rem);
+  font-size: clamp(3.25rem, 9vw, 6.4rem);
   line-height: 0.92;
   letter-spacing: 0.04em;
   color: var(--chalk);
   text-shadow: 0 10px 60px rgba(245, 185, 66, 0.25);
 }
-.start__title em { font-style: normal; color: var(--gold); margin-left: 0.18em; }
+.start__title span, .start__title em { display: block; }
+.start__title em { font-style: normal; color: var(--gold); margin-top: 0.08em; }
 .start__rule { width: 130px; height: 3px; background: linear-gradient(90deg, transparent, var(--gold), transparent); margin: 6px 0 2px; }
 .start__tag { margin: 0; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.34em; color: var(--muted); }
 .start__matchup { margin: 0; font-size: 0.94rem; color: var(--muted); animation: rise 0.7s 0.08s ease both; max-width: 640px; }
