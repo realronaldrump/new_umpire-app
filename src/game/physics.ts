@@ -83,6 +83,16 @@ export interface PitcherPhysique {
   releaseHeightFt: number
   releaseYFt: number
   arsenal: ReadonlyArray<readonly [PitchTypeKey, number]>
+  /** Stable Statcast-style shape for each pitch; optional for older room snapshots. */
+  pitchProfiles?: Partial<Record<PitchTypeKey, PitchProfile>>
+}
+
+export interface PitchProfile {
+  veloMph: number
+  ivbIn: number
+  /** Arm-side positive; glove-side negative. */
+  hbIn: number
+  spinRpm: number
 }
 
 export interface BatterPhysique {
@@ -219,12 +229,25 @@ export function generatePitch(
   ctx: PitchContext,
 ): PitchDescriptor {
   const def = choosePitchType(rng, pitcher, ctx)
-  const mph = clamp(rng.range(def.velo[0], def.velo[1]) + pitcher.veloOffsetMph, 68, 104)
-  const ivbIn = rng.range(def.ivb[0], def.ivb[1])
-  const hbArmSideIn = rng.range(def.hb[0], def.hb[1])
+  const profile = pitcher.pitchProfiles?.[def.key]
+  // A pitcher's shape is stable; individual offerings vary modestly around it.
+  // Legacy/test pitchers without profiles retain the original full-band sampling.
+  const mph = clamp(
+    (profile ? rng.gauss(profile.veloMph, 0.65) : rng.range(def.velo[0], def.velo[1])) + pitcher.veloOffsetMph,
+    68,
+    104,
+  )
+  const ivbIn = profile
+    ? clamp(rng.gauss(profile.ivbIn, 0.85), def.ivb[0], def.ivb[1])
+    : rng.range(def.ivb[0], def.ivb[1])
+  const hbArmSideIn = profile
+    ? clamp(rng.gauss(profile.hbIn, 0.95), def.hb[0], def.hb[1])
+    : rng.range(def.hb[0], def.hb[1])
   // Arm-side movement points toward -x for a RHP (catcher's-view convention).
   const hbIn = (pitcher.hand === 'R' ? -1 : 1) * hbArmSideIn
-  const spinRpm = rng.range(def.spinRpm[0], def.spinRpm[1])
+  const spinRpm = profile
+    ? clamp(rng.gauss(profile.spinRpm, 75), def.spinRpm[0], def.spinRpm[1])
+    : rng.range(def.spinRpm[0], def.spinRpm[1])
 
   const aim = chooseCrossingPoint(rng, def, pitcher, batter, ctx)
   const pc: Vec3 = { x: aim.x, y: 0, z: aim.z }

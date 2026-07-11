@@ -110,7 +110,9 @@ export function ReplayCard({ record }: { record: CallRecord }) {
   return (
     <aside className="replay-card" aria-live="polite">
       <div className="replay-card__head">
-        <span className="replay-card__kicker">K-ZONE REPLAY</span>
+        <span className="replay-card__kicker">
+          {record.challenged ? (record.overturned ? 'ABS · OVERTURNED' : 'ABS · CONFIRMED') : 'K-ZONE REPLAY'}
+        </span>
         <VerdictChip record={record} />
       </div>
       <KZone record={record} />

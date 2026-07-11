@@ -35,6 +35,8 @@ export interface DifficultyPreset {
   borderlineBias: number
   /** Max visual mitt-shift the catcher uses to steal borderline calls. */
   framingInches: number
+  /** ABS challenges the batting side gets per game (single-player only). */
+  absChallenges: number
 }
 
 export const DIFFICULTY: Record<Difficulty, DifficultyPreset> = {
@@ -47,6 +49,7 @@ export const DIFFICULTY: Record<Difficulty, DifficultyPreset> = {
     timeScale: 0.72,
     borderlineBias: 0.17,
     framingInches: 0.4,
+    absChallenges: 0,
   },
   pro: {
     key: 'pro',
@@ -57,16 +60,18 @@ export const DIFFICULTY: Record<Difficulty, DifficultyPreset> = {
     timeScale: 0.85,
     borderlineBias: 0.3,
     framingInches: 1.8,
+    absChallenges: 0,
   },
   legend: {
     key: 'legend',
     label: 'Legend',
-    tagline: 'Full speed · razor margins · the catcher is working you',
+    tagline: 'Full speed · razor margins · hitters can challenge your calls with ABS',
     zoneVisibleDuringPitch: false,
     callWindowMs: 975,
     timeScale: 1.0,
     borderlineBias: 0.46,
     framingInches: 3.4,
+    absChallenges: 2,
   },
 }
 
@@ -84,6 +89,10 @@ export const TIMING = {
   hbpResultMs: 2400,
   inningOverDelayMs: 1600,
   autoCallDelayMs: 260,
+  /** ABS challenge beats: helmet tap → tracking graphic → verdict hold. */
+  challengeMs: 1900,
+  absTrackMs: 2700,
+  absVerdictMs: 2300,
 } as const
 
 /** A call is "borderline" when ball-to-zone clearance is within this of an edge. */

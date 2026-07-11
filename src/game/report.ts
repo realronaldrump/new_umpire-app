@@ -17,6 +17,10 @@ export interface CallRecord {
   cross: { x: number; z: number }
   zoneTopFt: number
   zoneBotFt: number
+  /** ABS challenge (single-player Legend): the batter contested this strike. */
+  challenged?: boolean
+  /** …and the robot zone sided with him. */
+  overturned?: boolean
 }
 
 export interface ReportCard {
@@ -32,6 +36,8 @@ export interface ReportCard {
   hesitations: number
   blownHighLeverage: CallRecord[]
   framingResisted: number
+  /** Calls of yours the ABS overturned on a batter challenge. */
+  overturned: number
 }
 
 const GRADE_STEPS: ReadonlyArray<readonly [number, string, string]> = [
@@ -93,5 +99,6 @@ export function computeReport(calls: CallRecord[]): ReportCard {
     hesitations,
     blownHighLeverage,
     framingResisted,
+    overturned: calls.filter((c) => c.overturned).length,
   }
 }

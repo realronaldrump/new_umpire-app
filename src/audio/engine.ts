@@ -346,6 +346,141 @@ class AudioEngine {
     if (kind === 'walkoff') this.swell(1, 4.5)
   }
 
+  /**
+   * The park realizes a challenge is on: a fast murmur swell with an "ooooh"
+   * bend, settling into held-breath tension.
+   */
+  challengeBuzz(): void {
+    if (!this.ctx || !this.crowdBus) return
+    const buf = this.noiseBuffer(2.6, 'pink')
+    if (!buf) return
+    const t = this.ctx.currentTime
+    const src = this.ctx.createBufferSource()
+    src.buffer = buf
+    const bp = this.ctx.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.Q.value = 0.7
+    bp.frequency.setValueAtTime(500, t)
+    bp.frequency.exponentialRampToValueAtTime(1500, t + 0.5)
+    bp.frequency.exponentialRampToValueAtTime(750, t + 2.2)
+    const g = this.ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.4, t + 0.4)
+    g.gain.exponentialRampToValueAtTime(0.12, t + 2.4)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.6)
+    src.connect(bp)
+    bp.connect(g)
+    g.connect(this.crowdBus)
+    src.start(t)
+    src.stop(t + 2.7)
+  }
+
+  /** Hawk-eye style tracking blips while the ABS graphic measures the pitch. */
+  absTracking(): void {
+    if (!this.ctx || !this.sfx) return
+    const t = this.ctx.currentTime
+    for (let i = 0; i < 3; i++) {
+      const start = t + 0.35 + i * 0.62
+      const osc = this.ctx.createOscillator()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(920 + i * 120, start)
+      const g = this.ctx.createGain()
+      g.gain.setValueAtTime(0.0001, start)
+      g.gain.exponentialRampToValueAtTime(0.16, start + 0.015)
+      g.gain.exponentialRampToValueAtTime(0.0001, start + 0.22)
+      osc.connect(g)
+      g.connect(this.sfx)
+      osc.start(start)
+      osc.stop(start + 0.25)
+    }
+  }
+
+  /** The ruling lands: home crowd erupts on an overturn, boos a lost challenge. */
+  absVerdict(overturned: boolean): void {
+    if (!this.ctx || !this.sfx) return
+    const t = this.ctx.currentTime
+    // Verdict thunk — a low stamp under either reaction.
+    const thump = this.ctx.createOscillator()
+    thump.type = 'sine'
+    thump.frequency.setValueAtTime(180, t)
+    thump.frequency.exponentialRampToValueAtTime(62, t + 0.16)
+    const tg = this.ctx.createGain()
+    tg.gain.setValueAtTime(0.5, t)
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.2)
+    thump.connect(tg)
+    tg.connect(this.sfx)
+    thump.start(t)
+    thump.stop(t + 0.22)
+
+    if (overturned) {
+      // Free baseball for the home side — roar plus a bright little fanfare.
+      this.swell(0.95, 3.6)
+      const notes = [261.63, 329.63, 392]
+      notes.forEach((f, i) => {
+        if (!this.ctx || !this.sfx) return
+        const osc = this.ctx.createOscillator()
+        osc.type = 'triangle'
+        osc.frequency.value = f
+        const g = this.ctx.createGain()
+        const start = t + 0.1 + i * 0.07
+        g.gain.setValueAtTime(0.0001, start)
+        g.gain.exponentialRampToValueAtTime(0.16, start + 0.03)
+        g.gain.exponentialRampToValueAtTime(0.0001, start + 0.9)
+        osc.connect(g)
+        g.connect(this.sfx)
+        osc.start(start)
+        osc.stop(start + 1)
+      })
+    } else {
+      this.boo()
+    }
+  }
+
+  /** Full-throated boos: descending vocal formants over a low rumble. */
+  boo(): void {
+    if (!this.ctx || !this.crowdBus) return
+    const t = this.ctx.currentTime
+    const buf = this.noiseBuffer(2.4, 'pink')
+    if (buf) {
+      const src = this.ctx.createBufferSource()
+      src.buffer = buf
+      const lp = this.ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.value = 360
+      const g = this.ctx.createGain()
+      g.gain.setValueAtTime(0.0001, t)
+      g.gain.exponentialRampToValueAtTime(0.34, t + 0.4)
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 2.3)
+      src.connect(lp)
+      lp.connect(g)
+      g.connect(this.crowdBus)
+      src.start(t)
+      src.stop(t + 2.4)
+    }
+    // A few overlapping "boooo" voices, slightly detuned, all sinking.
+    for (let i = 0; i < 4; i++) {
+      const osc = this.ctx.createOscillator()
+      osc.type = 'sawtooth'
+      const f0 = 165 + i * 14
+      const start = t + 0.12 + i * 0.09
+      osc.frequency.setValueAtTime(f0, start)
+      osc.frequency.exponentialRampToValueAtTime(f0 * 0.72, start + 1.6)
+      const bp = this.ctx.createBiquadFilter()
+      bp.type = 'bandpass'
+      bp.frequency.value = 340
+      bp.Q.value = 1.4
+      const g = this.ctx.createGain()
+      g.gain.setValueAtTime(0.0001, start)
+      g.gain.exponentialRampToValueAtTime(0.075, start + 0.2)
+      g.gain.exponentialRampToValueAtTime(0.0001, start + 1.7)
+      osc.connect(bp)
+      bp.connect(g)
+      g.connect(this.crowdBus)
+      osc.start(start)
+      osc.stop(start + 1.8)
+    }
+  }
+
   get isStarted(): boolean {
     return this.started
   }

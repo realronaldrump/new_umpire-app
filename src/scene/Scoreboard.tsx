@@ -82,13 +82,39 @@ export function Scoreboard() {
       ctx.fillStyle = '#42556c'
       ctx.fillText('RONALD RUMPS at MICHELLE OBAMA MANS', 48, 392)
 
+      // The big board goes red while the robot zone reviews a challenge.
+      if (s.phase === 'challenge' || s.phase === 'absReveal') {
+        const blink = Math.floor(Date.now() / 450) % 2 === 0
+        ctx.fillStyle = blink ? '#8f1f1f' : '#6e1717'
+        ctx.fillRect(430, 340, W - 478, 72)
+        ctx.strokeStyle = '#e8543f'
+        ctx.lineWidth = 3
+        ctx.strokeRect(430, 340, W - 478, 72)
+        ctx.fillStyle = '#ffe9e2'
+        ctx.font = '700 40px "Archivo", sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText('⚠ ABS CHALLENGE — PLAY UNDER REVIEW', 430 + (W - 478) / 2, 377)
+      }
+
       if (texRef.current) texRef.current.needsUpdate = true
     }
     draw()
+    let blinkTimer: number | null = null
     const unsub = useGame.subscribe((state, prev) => {
-      if (state.sit !== prev.sit || state.seedText !== prev.seedText) draw()
+      const review = state.phase === 'challenge' || state.phase === 'absReveal'
+      const wasReview = prev.phase === 'challenge' || prev.phase === 'absReveal'
+      if (state.sit !== prev.sit || state.seedText !== prev.seedText || review !== wasReview) draw()
+      if (review && blinkTimer === null) {
+        blinkTimer = window.setInterval(draw, 450)
+      } else if (!review && blinkTimer !== null) {
+        window.clearInterval(blinkTimer)
+        blinkTimer = null
+      }
     })
-    return unsub
+    return () => {
+      if (blinkTimer !== null) window.clearInterval(blinkTimer)
+      unsub()
+    }
   }, [canvas])
 
   useEffect(() => {

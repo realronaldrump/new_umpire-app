@@ -33,6 +33,7 @@ export function DebugPanel() {
   const slowMo = useGame((s) => s.slowMo)
   const autoCall = useGame((s) => s.autoCall)
   const orbit = useGame((s) => s.orbit)
+  const forceChallenge = useGame((s) => s.forceChallenge)
   const fps = useFps()
   const [typeKey, setTypeKey] = useState<PitchTypeKey>('slider')
   const [loc, setLoc] = useState<ForcedPitch['loc']>('edge')
@@ -84,6 +85,13 @@ export function DebugPanel() {
         <button className={slowMo ? 'on' : ''} onClick={() => setDebug({ slowMo: !slowMo })}>slow-mo (T)</button>
         <button className={autoCall ? 'on' : ''} onClick={() => setDebug({ autoCall: !autoCall })}>auto-call</button>
         <button className={orbit ? 'on' : ''} onClick={() => setDebug({ orbit: !orbit })}>orbit (O)</button>
+        <button
+          className={forceChallenge ? 'on' : ''}
+          title="Batter challenges every called strike (needs challenges in the tank)"
+          onClick={() => setDebug({ forceChallenge: !forceChallenge })}
+        >
+          force ABS
+        </button>
       </div>
       <div className="debug__row debug__row--btns">
         <select value={typeKey} onChange={(e) => setTypeKey(e.target.value as PitchTypeKey)}>

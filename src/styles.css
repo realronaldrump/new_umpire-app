@@ -471,7 +471,7 @@ input, select { font-family: var(--body); }
 .end__result { margin: 0; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.2em; color: var(--muted); }
 .end__result--gold { color: var(--gold); }
 
-.end__stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; width: 100%; animation: rise 0.6s 0.1s ease both; }
+.end__stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; width: 100%; animation: rise 0.6s 0.1s ease both; }
 .stat {
   display: flex; flex-direction: column; gap: 3px; align-items: center;
   background: rgba(10, 16, 27, 0.66);
@@ -754,4 +754,135 @@ input, select { font-family: var(--body); }
   .ticker { left: 0.75rem; bottom: 5.6rem; max-width: calc(100% - 1.5rem); }
   .ticker__item { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .battercard { right: 0.75rem; bottom: 0.75rem; max-width: calc(100% - 1.5rem); }
+}
+
+/* ---------- ABS challenge review (single-player Legend) ---------- */
+
+.countline--abs em { width: auto; letter-spacing: 0.08em; margin-right: 2px; }
+
+.abs-veil {
+  position: absolute; inset: 0;
+  z-index: 55;
+  display: grid; place-items: center;
+  background:
+    radial-gradient(120% 90% at 50% 45%, rgba(6, 10, 18, 0.42), rgba(4, 7, 12, 0.82)),
+    rgba(4, 7, 12, 0.25);
+  animation: absVeilIn 0.3s ease both;
+}
+@keyframes absVeilIn { from { opacity: 0; } }
+
+.abs-board {
+  width: min(560px, 92vw);
+  border-radius: 14px;
+  border: 2px solid rgba(232, 84, 63, 0.75);
+  background:
+    linear-gradient(180deg, rgba(10, 15, 25, 0.97), rgba(6, 10, 17, 0.97));
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.7),
+    0 0 60px rgba(232, 84, 63, 0.22),
+    inset 0 0 40px rgba(232, 84, 63, 0.05);
+  padding: 16px 18px 14px;
+  animation: absBoardIn 0.42s cubic-bezier(0.18, 1.35, 0.4, 1) both;
+  transition: border-color 0.35s ease, box-shadow 0.35s ease;
+}
+@keyframes absBoardIn { from { transform: translateY(26px) scale(0.92); opacity: 0; } }
+.abs-board--over {
+  border-color: rgba(63, 217, 196, 0.85);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7), 0 0 70px rgba(63, 217, 196, 0.3), inset 0 0 40px rgba(63, 217, 196, 0.06);
+}
+.abs-board--conf {
+  border-color: rgba(245, 185, 66, 0.85);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7), 0 0 70px rgba(245, 185, 66, 0.28), inset 0 0 40px rgba(245, 185, 66, 0.06);
+}
+
+.abs-board__head { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+.abs-board__live {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 0.62rem; font-weight: 800; letter-spacing: 0.26em; color: var(--red);
+}
+.abs-board__live i {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 10px rgba(232, 84, 63, 0.9);
+  animation: absBlink 0.9s steps(2, start) infinite;
+}
+@keyframes absBlink { to { opacity: 0.25; } }
+.abs-board__title { font-family: var(--display); font-size: 1.7rem; letter-spacing: 0.1em; line-height: 1.05; }
+.abs-board__count { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.18em; color: var(--muted); }
+
+.abs-board__stage { position: relative; }
+.abs-zone {
+  width: 100%; display: block;
+  background:
+    radial-gradient(90% 70% at 50% 42%, rgba(20, 32, 50, 0.55), rgba(8, 13, 22, 0.9));
+  border: 1px solid rgba(198, 216, 236, 0.12);
+  border-radius: 10px;
+}
+.abs-zone__calib { animation: absCalib 0.55s ease both; }
+@keyframes absCalib { from { opacity: 0; stroke-dashoffset: 60; } }
+.abs-zone__frame { animation: absFrame 0.6s 0.1s ease both; }
+@keyframes absFrame { from { opacity: 0; } }
+.abs-zone__lock { animation: absLock 0.3s cubic-bezier(0.2, 1.4, 0.4, 1) both; transform-origin: center; }
+@keyframes absLock { from { opacity: 0; transform: scale(1.5); } }
+
+.abs-stamp {
+  position: absolute;
+  inset: 0;
+  display: grid; place-items: center;
+  pointer-events: none;
+}
+.abs-stamp > b {
+  font-family: var(--display);
+  font-size: clamp(2.6rem, 9vw, 4.2rem);
+  letter-spacing: 0.14em;
+  line-height: 1;
+  padding: 10px 26px 6px;
+  border: 4px solid currentColor;
+  border-radius: 10px;
+  background: rgba(6, 10, 17, 0.82);
+  transform: rotate(-6deg);
+  animation: absStamp 0.3s cubic-bezier(0.2, 1.5, 0.35, 1) both;
+  text-shadow: 0 0 30px currentColor;
+}
+.abs-stamp > span {
+  position: absolute;
+  bottom: 12%;
+  font-size: 0.74rem; font-weight: 800; letter-spacing: 0.3em;
+  color: var(--chalk);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
+  animation: absVeilIn 0.4s 0.18s ease both;
+}
+.abs-stamp--over > b { color: var(--teal); }
+.abs-stamp--conf > b { color: var(--gold); }
+@keyframes absStamp {
+  from { transform: rotate(-6deg) scale(2.4); opacity: 0; }
+  60% { transform: rotate(-6deg) scale(0.94); opacity: 1; }
+}
+
+.abs-board__foot {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  margin-top: 11px;
+}
+.abs-board__readout {
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+  color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.abs-board__pips {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.6rem; font-weight: 800; letter-spacing: 0.16em; color: var(--dim);
+  flex: none;
+}
+.abs-board__pips i {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 1.5px solid rgba(63, 217, 196, 0.5);
+  background: transparent;
+  transition: background 0.25s ease;
+}
+.abs-board__pips i.on { background: var(--teal); border-color: var(--teal); box-shadow: 0 0 8px rgba(63, 217, 196, 0.7); }
+
+@media (max-width: 640px) {
+  .abs-board { padding: 12px 12px 10px; }
+  .abs-board__title { font-size: 1.35rem; }
+  .abs-board__readout { font-size: 0.58rem; }
 }

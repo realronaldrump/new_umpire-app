@@ -5,6 +5,13 @@ import { useGame } from '../store/game'
 import { useSettings } from '../store/settings'
 import { multiplayerRole, useMultiplayer } from '../multiplayer/store'
 
+declare global {
+  interface Window {
+    /** Debug: pin the camera anywhere — `__freecam = { pos: [x,y,z], look: [x,y,z] }`. */
+    __freecam?: { pos: [number, number, number]; look: [number, number, number] } | null
+  }
+}
+
 /**
  * The umpire's eyes: in the slot over the catcher's shoulder, toward the
  * batter's inside edge. Micro-sway keeps it alive between pitches and locks
@@ -19,6 +26,13 @@ export function CameraRig() {
   useFrame((_, delta) => {
     const g = useGame.getState()
     if (g.orbit) return // debug OrbitControls owns the camera
+    const free = window.__freecam
+    if (free) {
+      camera.position.set(...free.pos)
+      look.current.set(...free.look)
+      camera.lookAt(look.current)
+      return
+    }
     const s = useSettings.getState()
 
     if (g.mode === 'multiplayer') {

@@ -3,6 +3,7 @@ import { audio } from '../audio/engine'
 import { heightLabel, AWAY_TEAM, HOME_TEAM } from '../game/roster'
 import { useGame } from '../store/game'
 import { useUi } from '../store/ui'
+import { AbsReplay } from './AbsReplay'
 import { CallPrompt } from './CallPrompt'
 import { ReplayCard } from './ReplayCard'
 
@@ -33,6 +34,8 @@ function BasesDiamond() {
 
 function ScoreBug() {
   const sit = useGame((s) => s.sit)
+  const challengesLeft = useGame((s) => s.challengesLeft)
+  const challengesMax = useGame((s) => s.challengesMax)
   return (
     <div className="scorebug panel">
       <div className="scorebug__teams">
@@ -54,6 +57,11 @@ function ScoreBug() {
           <span className="countline"><em>B</em><Dots n={sit.balls} of={3} color="var(--green)" /></span>
           <span className="countline"><em>S</em><Dots n={sit.strikes} of={2} color="var(--red)" /></span>
           <span className="countline"><em>O</em><Dots n={sit.outs} of={2} color="var(--gold)" shape="square" /></span>
+          {challengesMax > 0 && (
+            <span className="countline countline--abs" title="Batter ABS challenges remaining">
+              <em>ABS</em><Dots n={challengesLeft} of={challengesMax} color="var(--teal)" />
+            </span>
+          )}
         </div>
       </div>
     </div>
@@ -222,6 +230,7 @@ export function Hud() {
       <Banner />
       <CallPrompt />
       {phase === 'reveal' && reveal && <ReplayCard record={reveal.record} />}
+      {phase === 'absReveal' && <AbsReplay />}
       <PauseVeil />
     </>
   )

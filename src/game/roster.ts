@@ -1,6 +1,6 @@
-import type { PitcherPhysique } from './physics'
-import type { PitchTypeKey } from './pitchTypes'
-import { clamp, type RNG } from './rng'
+import type { PitcherPhysique, PitchProfile } from './physics'
+import { PITCH_TYPES, type PitchTypeKey } from './pitchTypes'
+import { clamp, createRng, type RNG } from './rng'
 import type { BatterStance } from './strikeZone'
 
 export interface TeamDef {
@@ -19,6 +19,41 @@ export const HOME_TEAM: TeamDef = {
 export const AWAY_TEAM: TeamDef = {
   city: 'Michelle Obama', name: 'is a Mans', abbr: 'MOM',
   primary: '#3a3d47', accent: '#ff7a45',
+}
+
+/**
+ * Purely cosmetic kit + mannerisms that make each hitter read as a specific
+ * big-leaguer instead of a mannequin. Never consulted by game logic.
+ */
+export interface BatterLook {
+  /** High-cuffed pants showing team socks vs. long pants over the cleats. */
+  highSocks: boolean
+  /** Compression sleeve under the jersey: on the lead arm, both, or none. */
+  sleeve: 'none' | 'lead' | 'both'
+  sleeveColor: string
+  /** Protective elbow guard on the lead arm. */
+  armGuard: boolean
+  /** Shin guard on the lead leg. */
+  legGuard: boolean
+  wristbands: boolean
+  /** C-flap jaw extension on the helmet. */
+  jawGuard: boolean
+  gloveColor: string
+  beard: 'none' | 'stubble' | 'goatee' | 'full'
+  hairColor: string
+  eyeBlack: boolean
+  chain: boolean
+  batFinish: 'natural' | 'black' | 'twoTone'
+  /** Lead foot pulled off the plate line (ft), 0 = square stance. */
+  openStance: number
+  /** Resting bat tilt offset (rad) — flat bats vs. straight-up hands. */
+  batAngle: number
+  /** Hands carried higher/lower than standard (ft). */
+  handsHeight: number
+  /** Idle bat-waggle amplitude (0 statue … 1.6 windmill) and speed (Hz). */
+  waggle: number
+  waggleHz: number
+  nameOnBack: string
 }
 
 export interface BatterDef {
@@ -40,6 +75,8 @@ export interface BatterDef {
   power: number
   avgLabel: string
   order: number
+  /** Optional: multiplayer rooms created before looks shipped omit it. */
+  look?: BatterLook
 }
 
 export interface PitcherDef extends PitcherPhysique {
@@ -57,6 +94,47 @@ const PLAYER_NAMES = [
   'John Fetterman', 'Kristi Noem', 'Ayanna Pressley', 'Ro Khanna',
   'Rashida Tlaib',
 ]
+
+const SKIN_TONES = ['#59371f', '#6f452f', '#8b5b3d', '#a96f50', '#c58e6d', '#dfb08d', '#eec39e']
+const HAIR_COLORS = ['#151210', '#241a12', '#33241a', '#4a3320', '#6b4a2a', '#8a6740']
+const GLOVE_COLORS = ['#f4f6f8', '#8f2637', '#15181d', '#f5b942']
+
+/** Jersey nameplate: last name token, hyphens preserved ("GREENE-LIGHT"). */
+export const nameOnBack = (name: string): string =>
+  (name.trim().split(/\s+/).pop() ?? name).toUpperCase()
+
+/**
+ * Cosmetic look for one hitter. Uses its own seeded stream so game-affecting
+ * rolls (stance, ratings, pitch sequences) are untouched for existing seeds.
+ */
+function generateLook(rng: RNG, name: string): BatterLook {
+  return {
+    highSocks: rng.chance(0.45),
+    sleeve: rng.weighted([['none', 0.4], ['lead', 0.35], ['both', 0.25]] as const),
+    sleeveColor: rng.weighted([[HOME_TEAM.primary, 0.45], [HOME_TEAM.accent, 0.3], ['#14171c', 0.25]] as const),
+    armGuard: rng.chance(0.55),
+    legGuard: rng.chance(0.3),
+    wristbands: rng.chance(0.5),
+    jawGuard: rng.chance(0.28),
+    gloveColor: rng.pick(GLOVE_COLORS),
+    beard: rng.weighted([['none', 0.33], ['stubble', 0.26], ['goatee', 0.16], ['full', 0.25]] as const),
+    hairColor: rng.pick(HAIR_COLORS),
+    eyeBlack: rng.chance(0.36),
+    chain: rng.chance(0.42),
+    batFinish: rng.weighted([['natural', 0.45], ['black', 0.3], ['twoTone', 0.25]] as const),
+    openStance: rng.chance(0.3) ? rng.range(0.08, 0.24) : 0,
+    batAngle: rng.range(-0.22, 0.3),
+    handsHeight: rng.range(-0.09, 0.13),
+    waggle: rng.range(0.25, 1.5),
+    waggleHz: rng.range(0.55, 1.15),
+    nameOnBack: nameOnBack(name),
+  }
+}
+
+/** Deterministic stand-in for lineups serialized before looks existed. */
+export function lookFor(batter: Pick<BatterDef, 'look' | 'name' | 'number'>): BatterLook {
+  return batter.look ?? generateLook(createRng(`look-fallback:${batter.name}:${batter.number}`), batter.name)
+}
 
 function uniqueName(rng: RNG, used: Set<string>): string {
   for (let i = 0; i < 40; i++) {
@@ -86,20 +164,23 @@ export function generateLineup(rng: RNG): BatterDef[] {
       kneeHollowIn: heightIn * 0.275 - crouchIn * 0.14,
       widthIn: clamp(rng.gauss(30.5, 4.6), 22, 42),
     }
+    const name = uniqueName(rng, used)
+    const hand: 'R' | 'L' = rng.chance(0.62) ? 'R' : 'L'
     lineup.push({
       id: i,
-      name: uniqueName(rng, used),
-      hand: rng.chance(0.62) ? 'R' : 'L',
+      name,
+      hand,
       heightIn,
       stance,
       build: clamp(rng.gauss(0, 0.55), -1, 1),
-      skinTone: rng.pick(['#6f452f', '#8b5b3d', '#a96f50', '#c58e6d', '#dfb08d']),
+      skinTone: rng.pick(SKIN_TONES),
       number: 1 + rng.int(98),
       discipline: clamp(rng.gauss(0, 0.5), -1, 1),
       contact: clamp(rng.gauss(0, 0.5), -1, 1),
       power: clamp(rng.gauss(0, 0.55), -1, 1),
       avgLabel: avg.toFixed(3).replace(/^0/, ''),
       order: i + 1,
+      look: generateLook(rng.fork(`look:${i}`), name),
     })
   }
   return lineup
@@ -108,28 +189,64 @@ export function generateLineup(rng: RNG): BatterDef[] {
 export function generateCloser(rng: RNG): PitcherDef {
   const used = new Set<string>()
   const hand: 'R' | 'L' = rng.chance(0.72) ? 'R' : 'L'
-  const primary: PitchTypeKey = rng.chance(0.68) ? 'fourseam' : 'sinker'
-  const secondary = rng.pick(['slider', 'cutter', 'sweeper'] as const)
-  const tertiary = rng.pick(['curveball', 'changeup', 'splitter'] as const)
-  const arsenal: Array<readonly [PitchTypeKey, number]> = [
-    [primary, 0.48],
-    [secondary, 0.32],
-    [tertiary, 0.2],
-  ]
-  if (rng.chance(0.35)) {
-    const fourth = rng.pick(['changeup', 'curveball', 'splitter', 'sweeper'] as const)
-    if (!arsenal.some(([k]) => k === fourth)) arsenal.push([fourth, 0.09])
+  const primary = rng.weighted([
+    ['fourseam', 0.56], ['sinker', 0.33], ['cutter', 0.11],
+  ] as const)
+  const secondFastball = rng.weighted(
+    (['fourseam', 'sinker', 'cutter'] as const)
+      .filter((key) => key !== primary)
+      .map((key) => [key, key === 'fourseam' ? 0.55 : key === 'sinker' ? 0.48 : 0.38] as const),
+  )
+  const primaryBreaker = rng.weighted([
+    ['slider', 0.42], ['sweeper', 0.24], ['curveball', 0.17],
+    ['slurve', 0.1], ['knucklecurve', 0.07],
+  ] as const)
+  const offspeed = rng.weighted([['changeup', 0.7], ['splitter', 0.3]] as const)
+  const keys: PitchTypeKey[] = [primary, primaryBreaker, secondFastball, offspeed]
+
+  const hasFive = rng.chance(0.55)
+  if (hasFive) {
+    const curveFamily = new Set<PitchTypeKey>(['curveball', 'knucklecurve'])
+    const breakingCandidates = ([
+      ['slider', 0.34], ['sweeper', 0.26], ['curveball', 0.18],
+      ['slurve', 0.14], ['knucklecurve', 0.08],
+    ] as const).filter(([key]) => (
+      !keys.includes(key) &&
+      !(curveFamily.has(primaryBreaker) && curveFamily.has(key))
+    ))
+    keys.push(rng.weighted(breakingCandidates))
   }
+
+  // Modern pitch mixes are broader and more balanced, while the primary
+  // fastball remains the most frequent offering.
+  const weights = hasFive ? [0.34, 0.22, 0.18, 0.15, 0.11] : [0.38, 0.25, 0.21, 0.16]
+  const arsenal: Array<readonly [PitchTypeKey, number]> = keys.map((key, i) => [key, weights[i]])
+  const pitchProfiles: Partial<Record<PitchTypeKey, PitchProfile>> = {}
+  for (const key of keys) {
+    const def = PITCH_TYPES[key]
+    const sampleBand = (band: readonly [number, number]): number => {
+      const middle = (band[0] + band[1]) / 2
+      return clamp(rng.gauss(middle, (band[1] - band[0]) / 5.5), band[0], band[1])
+    }
+    pitchProfiles[key] = {
+      veloMph: sampleBand(def.velo),
+      ivbIn: sampleBand(def.ivb),
+      hbIn: sampleBand(def.hb),
+      spinRpm: sampleBand(def.spinRpm),
+    }
+  }
+  const veloOffsetMph = clamp(rng.gauss(0.8, 1.1), -2, 3.2)
   return {
     name: uniqueName(rng, used),
     number: 11 + rng.int(88),
     hand,
-    veloOffsetMph: clamp(rng.gauss(0.8, 1.1), -2, 3.2), // closers run hot
+    veloOffsetMph, // closers run hot
     commandMult: rng.range(0.9, 1.22),
     releaseSideFt: rng.range(1.3, 2.15),
     releaseHeightFt: rng.range(5.3, 6.3),
     releaseYFt: rng.range(53.2, 54.2),
     arsenal,
+    pitchProfiles,
   }
 }
 

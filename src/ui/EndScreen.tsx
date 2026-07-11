@@ -48,6 +48,9 @@ export function EndScreen() {
           <div className="stat"><b>{report.borderlineCorrect}/{report.borderlineTotal}</b><span>CORNERS NAILED</span></div>
           <div className="stat"><b>{report.framingResisted}</b><span>FRAME JOBS RESISTED</span></div>
           <div className="stat"><b>{report.hesitations}</b><span>HESITATIONS</span></div>
+          {calls.some((c) => c.challenged) && (
+            <div className="stat"><b>{report.overturned}</b><span>ABS OVERTURNS</span></div>
+          )}
         </div>
 
         {worst.length > 0 && (

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { audio } from '../audio/engine'
-import { decideSwing, resolveSwing, type SwingOutcome, type SwingPlan } from '../game/batter'
+import { decideChallenge, decideSwing, resolveSwing, type SwingOutcome, type SwingPlan } from '../game/batter'
 import { DIFFICULTY, TIMING } from '../game/constants'
 import {
   applyCalledPitch, applyHbp, applySwing, createScenario, leverageOf, nextBatter,
@@ -13,7 +13,7 @@ import {
 import type { PitchTypeKey } from '../game/pitchTypes'
 import { computeReport, type CallRecord, type ReportCard } from '../game/report'
 import { createRng, randomSeedText, type RNG } from '../game/rng'
-import { generateCloser, generateLineup, type BatterDef, type PitcherDef } from '../game/roster'
+import { generateCloser, generateLineup, nameOnBack, type BatterDef, type PitcherDef } from '../game/roster'
 import { describeTake, zoneFor } from '../game/strikeZone'
 import { effectiveCallWindowMs, effectiveTimeScale, useSettings } from './settings'
 import type { RoomSnapshot } from '../multiplayer/protocol'
@@ -27,6 +27,8 @@ export type Phase =
   | 'windup'
   | 'flight'
   | 'call'
+  | 'challenge'
+  | 'absReveal'
   | 'reveal'
   | 'swingResult'
   | 'inningOver'
@@ -74,6 +76,26 @@ export interface TickerItem {
   kind: PlayEvent['kind']
 }
 
+/**
+ * A live ABS challenge (single-player Legend): the batter contested the
+ * umpire's strike call and the robot zone is about to rule. The verdict is
+ * physics truth, fixed the moment the challenge starts.
+ */
+export interface AbsChallengeState {
+  batterName: string
+  truthStrike: boolean
+  /** truth ball ⇒ the strike call comes off the board. */
+  overturned: boolean
+  /** Set once the verdict-beat audio has fired inside absReveal. */
+  verdictPlayed: boolean
+  countBefore: string
+  leverage: number
+  edgeDistIn: number
+  cross: { x: number; z: number }
+  zoneTopFt: number
+  zoneBotFt: number
+}
+
 interface GameState {
   mode: GameMode
   phase: Phase
@@ -99,11 +121,18 @@ interface GameState {
   report: ReportCard | null
   pendingAtBatOver: boolean
 
+  /** ABS challenges (single-player Legend). Zero on other difficulties. */
+  challengesLeft: number
+  challengesMax: number
+  absChallenge: AbsChallengeState | null
+
   debugOpen: boolean
   slowMo: boolean
   autoCall: boolean
   orbit: boolean
   forced: ForcedPitch | null
+  /** Debug: batter challenges every called strike (while challenges remain). */
+  forceChallenge: boolean
 
   newGame: (seed?: string) => void
   playBall: () => void
@@ -112,7 +141,7 @@ interface GameState {
   hurry: () => void
   setPaused: (p: boolean, menu?: boolean) => void
   toggleDebug: () => void
-  setDebug: (patch: Partial<Pick<GameState, 'slowMo' | 'autoCall' | 'orbit' | 'forced'>>) => void
+  setDebug: (patch: Partial<Pick<GameState, 'slowMo' | 'autoCall' | 'orbit' | 'forced' | 'forceChallenge'>>) => void
   hydrateRemote: (snapshot: RoomSnapshot, serverNow: number) => void
 }
 
@@ -122,6 +151,8 @@ const now = () => performance.now()
 
 /** internal, non-reactive */
 let rng: RNG = createRng('boot')
+/** Separate stream for challenge decisions so they never shift pitch rolls. */
+let challengeRng: RNG = createRng('boot-abs')
 
 const batterOf = (s: Pick<GameState, 'lineup' | 'sit'>): BatterDef => s.lineup[s.sit.batterIdx]
 
@@ -215,6 +246,17 @@ export const useGame = create<GameState>()((set, get) => {
     const { pitch, batter } = s.active
     const settings = useSettings.getState()
 
+    // ABS (single-player Legend): a rung-up hitter can tap his helmet and send
+    // your strike call to the robot zone before it reaches the book. Ball
+    // calls are never contested — they already went the batting side's way.
+    if (!hesitated && call === 'strike' && s.mode === 'single' && (s.challengesLeft > 0 || s.forceChallenge)) {
+      const taps = s.forceChallenge || decideChallenge(challengeRng, batter, pitch, s.sit, s.challengesLeft)
+      if (taps) {
+        startChallenge()
+        return
+      }
+    }
+
     const truth = pitch.truthStrike
     const correct = hesitated && settings.hesitationPolicy === 'miss'
       ? false
@@ -269,6 +311,100 @@ export const useGame = create<GameState>()((set, get) => {
         title: res.headline,
         sub: res.atBatOver ? undefined : `Count ${sit.balls}-${sit.strikes}`,
         tone: res.atBatOver ? 'gold' : 'neutral',
+      },
+      callDeadline: null,
+    })
+  }
+
+  /** The bark happened, the helmet got tapped — freeze the call and go to review. */
+  function startChallenge(): void {
+    const s = get()
+    if (!s.active) return
+    const { pitch, batter } = s.active
+    const zone = zoneFor(batter)
+    audio.umpCall('strike', useSettings.getState().umpVoice)
+    audio.challengeBuzz()
+    audio.setTension(1)
+    enter('challenge', TIMING.challengeMs, {
+      absChallenge: {
+        batterName: batter.name,
+        truthStrike: pitch.truthStrike,
+        overturned: !pitch.truthStrike,
+        verdictPlayed: false,
+        countBefore: `${s.sit.balls}-${s.sit.strikes}`,
+        leverage: leverageOf(s.sit),
+        edgeDistIn: pitch.metrics.edgeDistIn,
+        cross: { x: pitch.zonePoint.x, z: pitch.zonePoint.z },
+        zoneTopFt: zone.topFt,
+        zoneBotFt: zone.botFt,
+      },
+      banner: {
+        key: bannerKey++,
+        title: `${nameOnBack(batter.name)} CHALLENGES THE CALL`,
+        sub: 'HELMET TAP — AUTOMATED BALL-STRIKE REVIEW',
+        tone: 'bad',
+      },
+      ticker: pushEvents(s, [{ kind: 'info', text: `${batter.name} taps his helmet — the strike call goes to ABS review.`, runs: 0 }]),
+      callDeadline: null,
+    })
+  }
+
+  /** The robot zone has ruled: the truth call goes in the book, not yours. */
+  function resolveChallenge(): void {
+    const s = get()
+    const c = s.absChallenge
+    if (!s.active || !c) return
+    const { pitch, batter } = s.active
+    const truth = pitch.truthStrike
+    const applied = truth ? 'strike' : 'ball'
+    const sit = structuredClone(s.sit)
+    const res = applyCalledPitch(sit, applied, batter.name)
+    const zone = zoneFor(batter)
+
+    const record: CallRecord = {
+      pitchNo: sit.totalPitches,
+      batterName: batter.name,
+      countBefore: c.countBefore,
+      playerCall: 'strike',
+      truthStrike: truth,
+      correct: truth,
+      hesitated: false,
+      edgeDistIn: pitch.metrics.edgeDistIn,
+      nearestEdge: pitch.metrics.nearestEdge,
+      leverage: c.leverage,
+      endedAtBat: res.atBatOver,
+      note: (truth
+        ? 'Challenged — and the robot zone backed you up. '
+        : 'Challenged and overturned — ABS took that strike off the board. ')
+        + describeTake(true, pitch.metrics),
+      cross: { x: pitch.zonePoint.x, z: pitch.zonePoint.z },
+      zoneTopFt: zone.topFt,
+      zoneBotFt: zone.botFt,
+      challenged: true,
+      overturned: !truth,
+    }
+
+    crowdReact(res.events)
+    if (sit.over) audio.stinger(sit.walkOff ? 'walkoff' : 'over')
+
+    const dur = TIMING.revealMs + (res.atBatOver ? TIMING.revealAtBatEndBonusMs : 0)
+    enter('reveal', dur, {
+      sit,
+      pendingAtBatOver: res.atBatOver,
+      calls: [...s.calls, record],
+      // Real ABS economics: a successful challenge is retained.
+      challengesLeft: truth ? Math.max(0, s.challengesLeft - 1) : s.challengesLeft,
+      absChallenge: null,
+      reveal: { record, headline: res.headline, atBatOver: res.atBatOver, batterHand: batter.hand },
+      ticker: pushEvents(s, [
+        { kind: 'info', text: truth ? 'ABS confirms the strike — challenge lost.' : 'ABS overturns the call — that pitch is a ball.', runs: 0 },
+        ...res.events,
+      ]),
+      banner: {
+        key: bannerKey++,
+        title: truth ? `CONFIRMED · ${res.headline}` : `OVERTURNED · ${res.headline}`,
+        sub: res.atBatOver ? undefined : `Count ${sit.balls}-${sit.strikes}`,
+        tone: res.atBatOver ? 'gold' : truth ? 'good' : 'bad',
       },
       callDeadline: null,
     })
@@ -420,15 +556,21 @@ export const useGame = create<GameState>()((set, get) => {
     report: null,
     pendingAtBatOver: false,
 
+    challengesLeft: 0,
+    challengesMax: 0,
+    absChallenge: null,
+
     debugOpen: false,
     slowMo: false,
     autoCall: false,
     orbit: false,
     forced: null,
+    forceChallenge: false,
 
     newGame: (seed) => {
       const seedText = (seed ?? '').trim() || randomSeedText()
       rng = createRng('game:' + seedText)
+      challengeRng = rng.fork('abs')
       const scenario = createScenario(rng)
       set({
         mode: 'single',
@@ -445,6 +587,9 @@ export const useGame = create<GameState>()((set, get) => {
         report: null,
         callDeadline: null,
         pendingAtBatOver: false,
+        challengesLeft: 0,
+        challengesMax: 0,
+        absChallenge: null,
         phase: 'menu',
         paused: false,
         pauseMenuOpen: false,
@@ -459,11 +604,16 @@ export const useGame = create<GameState>()((set, get) => {
       audio.uiClick()
       audio.swell(0.35, 2.5)
       enterNewBatter()
+      // Challenge budget follows the difficulty the ninth actually starts on.
+      const absChallenges = DIFFICULTY[useSettings.getState().difficulty].absChallenges
       // Lead with the scenario stakes before the batter announcement takes over.
       set({
         banner: { key: bannerKey++, title: 'BOTTOM OF THE 9TH', sub: s.intro, tone: 'gold' },
         ticker: [{ id: tickerId++, text: s.intro, kind: 'info' }],
         phaseDur: TIMING.newBatterMs + 1100,
+        challengesLeft: absChallenges,
+        challengesMax: absChallenges,
+        absChallenge: null,
       })
     },
 
@@ -502,6 +652,21 @@ export const useGame = create<GameState>()((set, get) => {
             gradeAndReveal('ball', true) // hesitation; true call is applied inside
           }
           break
+        case 'challenge':
+          if (elapsed >= s.phaseDur) {
+            audio.absTracking()
+            enter('absReveal', TIMING.absTrackMs + TIMING.absVerdictMs)
+          }
+          break
+        case 'absReveal': {
+          const c = s.absChallenge
+          if (c && !c.verdictPlayed && elapsed >= TIMING.absTrackMs) {
+            audio.absVerdict(c.overturned)
+            set({ absChallenge: { ...c, verdictPlayed: true } })
+          }
+          if (elapsed >= s.phaseDur) resolveChallenge()
+          break
+        }
         case 'reveal':
         case 'swingResult':
           if (elapsed >= s.phaseDur) afterResolution()
@@ -591,6 +756,10 @@ export const useGame = create<GameState>()((set, get) => {
         callDeadline: snapshot.callDeadline === null ? null : toPerf(snapshot.callDeadline),
         report: snapshot.roundSummaries[snapshot.roundSummaries.length - 1]?.umpiring ?? null,
         pendingAtBatOver: snapshot.pendingAtBatOver,
+        // ABS is a single-player system; never carry one into a live room.
+        challengesLeft: 0,
+        challengesMax: 0,
+        absChallenge: null,
       })
     },
   }
@@ -617,7 +786,8 @@ export function ballStateAt(t: number): { pos: Vec3; vel: Vec3; visible: boolean
     return { pos, vel: velAt(a.pitch.traj, ft), visible: true, trailing: true, spinT: ft }
   }
 
-  if (s.phase === 'call' || (s.phase === 'reveal' && !a.hitTraj)) {
+  if (s.phase === 'call' || s.phase === 'challenge' || s.phase === 'absReveal' || (s.phase === 'reveal' && !a.hitTraj)) {
+    // Held in the mitt — through the call window and any ABS review.
     const pos = posAt(a.pitch.traj, a.pitch.traj.catchT)
     if (!a.plan.swings) {
       pos.x += a.framing.x

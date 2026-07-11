@@ -75,7 +75,8 @@ export function decideSwing(
 
 const WHIFF_BASE: Record<string, number> = {
   fourseam: 0.19, sinker: 0.14, cutter: 0.2, slider: 0.32,
-  sweeper: 0.34, curveball: 0.3, changeup: 0.28, splitter: 0.34,
+  sweeper: 0.34, slurve: 0.32, curveball: 0.3, knucklecurve: 0.33,
+  changeup: 0.28, splitter: 0.34,
 }
 
 const FIELD_SPOTS = ['short', 'second', 'third', 'first'] as const
@@ -157,4 +158,38 @@ function battedBall(rng: RNG, batter: BatterDef, quality: ContactQuality): Swing
   if (r < hrP + 0.26 + 0.33) return { kind: 'inPlay', quality, bases: 1, text: `rips a single through ${spot === 'short' || spot === 'third' ? 'the left side' : 'the right side'}` }
   if (r < hrP + 0.26 + 0.33 + 0.22) return { kind: 'inPlay', quality, bases: 2, text: `laces a double down the ${of === 'center' ? 'gap' : of + ' line'}` }
   return { kind: 'inPlay', quality, bases: 3, text: `splits the outfielders — he's in with a triple` }
+}
+
+/**
+ * ABS challenge (single-player Legend): after the umpire rings up a called
+ * strike, does this hitter tap his helmet? He knows roughly where the pitch
+ * was, not exactly — egregious misses are near-automatic challenges, close
+ * balls likely ones, and close true strikes tempt desperate wasted taps.
+ * Ball calls are never challenged; they already favor the batting side.
+ */
+export function decideChallenge(
+  rng: RNG,
+  batter: BatterDef,
+  pitch: PitchDescriptor,
+  count: Count,
+  challengesLeft: number,
+): boolean {
+  if (challengesLeft <= 0) return false
+  const edge = pitch.metrics.edgeDistIn // >0: ball by that many inches; <0: strike overlap
+  const wouldBeK = count.strikes === 2
+
+  if (!pitch.truthStrike) {
+    // The umpire missed. Confidence scales with how badly.
+    let p = edge > 3 ? 0.96 : 0.5 + edge * 0.14
+    p += 0.22 * Math.max(0, batter.discipline)
+    if (wouldBeK) p += 0.18
+    return rng.chance(clamp(p, 0.35, 0.985))
+  }
+
+  // Correct strike call: only pitches that shaved the zone tempt a challenge.
+  if (edge < -2.2) return false
+  let p = 0.1 + (1 + edge / 2.2) * 0.15
+  p += 0.15 * Math.max(0, -batter.discipline)
+  if (wouldBeK) p += 0.2
+  return rng.chance(clamp(p, 0, 0.5))
 }

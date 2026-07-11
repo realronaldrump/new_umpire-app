@@ -4,7 +4,9 @@ export type PitchTypeKey =
   | 'cutter'
   | 'slider'
   | 'sweeper'
+  | 'slurve'
   | 'curveball'
+  | 'knucklecurve'
   | 'changeup'
   | 'splitter'
 
@@ -28,45 +30,63 @@ export interface PitchTypeDef {
   breaking: boolean
 }
 
+/**
+ * Velocity/IVB/HB bands use pitch-count-weighted 10th–90th percentile pitcher
+ * averages from Baseball Savant's 2025 Pitch Movement leaderboard (minimum 50
+ * thrown). Knuckle curves follow MLB's spike-curve description because Savant
+ * did not publish a qualifying KC row in that leaderboard.
+ * Horizontal signs are expressed from the pitcher's perspective here:
+ * arm-side positive, glove-side negative.
+ */
 export const PITCH_TYPES: Record<PitchTypeKey, PitchTypeDef> = {
   fourseam: {
     key: 'fourseam', name: 'Four-Seam Fastball', short: 'FF',
-    velo: [93, 96.5], ivb: [15, 18], hb: [6, 10], spinRpm: [2200, 2500],
+    velo: [91.8, 97.4], ivb: [12.6, 18.5], hb: [3.4, 12.1], spinRpm: [2100, 2600],
     spin: 'back', wildness: 1.0, breaking: false,
   },
   sinker: {
     key: 'sinker', name: 'Sinker', short: 'SI',
-    velo: [91, 94.5], ivb: [8, 12], hb: [14, 18], spinRpm: [2000, 2300],
+    velo: [90.7, 97], ivb: [2.9, 12.9], hb: [12.9, 17.7], spinRpm: [1900, 2450],
     spin: 'back', wildness: 1.05, breaking: false,
   },
   cutter: {
     key: 'cutter', name: 'Cutter', short: 'FC',
-    velo: [88, 91.5], ivb: [6, 10], hb: [-4, -1], spinRpm: [2300, 2600],
+    velo: [86.5, 92.8], ivb: [4.3, 12.2], hb: [-4.8, -0.6], spinRpm: [2200, 2750],
     spin: 'gyro', wildness: 1.1, breaking: false,
   },
   slider: {
     key: 'slider', name: 'Slider', short: 'SL',
-    velo: [83, 87], ivb: [1, 4], hb: [-14, -6], spinRpm: [2400, 2700],
+    velo: [83.5, 89.1], ivb: [-2.1, 6], hb: [-7.4, -1.2], spinRpm: [2200, 2900],
     spin: 'gyro', wildness: 1.3, breaking: true,
   },
   sweeper: {
     key: 'sweeper', name: 'Sweeper', short: 'ST',
-    velo: [80, 84], ivb: [0, 3], hb: [-18, -12], spinRpm: [2500, 2800],
+    velo: [78.7, 86.1], ivb: [-3.2, 5.2], hb: [-16.9, -10.1], spinRpm: [2300, 3000],
     spin: 'side', wildness: 1.38, breaking: true,
+  },
+  slurve: {
+    key: 'slurve', name: 'Slurve', short: 'SV',
+    velo: [79, 84], ivb: [-8.3, -0.8], hb: [-16.6, -7.1], spinRpm: [2300, 2950],
+    spin: 'top', wildness: 1.4, breaking: true,
   },
   curveball: {
     key: 'curveball', name: 'Curveball', short: 'CU',
-    velo: [78, 82], ivb: [-14, -8], hb: [4, 10], spinRpm: [2500, 2900],
+    velo: [75.9, 85], ivb: [-15.8, -4.2], hb: [-14.8, -3.2], spinRpm: [2350, 3100],
     spin: 'top', wildness: 1.42, breaking: true,
+  },
+  knucklecurve: {
+    key: 'knucklecurve', name: 'Knuckle Curve', short: 'KC',
+    velo: [76, 83], ivb: [-17, -8], hb: [-11, -2.5], spinRpm: [2250, 3000],
+    spin: 'top', wildness: 1.46, breaking: true,
   },
   changeup: {
     key: 'changeup', name: 'Changeup', short: 'CH',
-    velo: [83, 87], ivb: [4, 8], hb: [12, 17], spinRpm: [1600, 1900],
+    velo: [80.3, 89.8], ivb: [-0.2, 9.8], hb: [11.3, 17.1], spinRpm: [1450, 2150],
     spin: 'back', wildness: 1.22, breaking: true,
   },
   splitter: {
     key: 'splitter', name: 'Splitter', short: 'FS',
-    velo: [84, 88], ivb: [-2, 4], hb: [6, 12], spinRpm: [1200, 1500],
+    velo: [83, 90.9], ivb: [-0.9, 8.9], hb: [7.4, 14.9], spinRpm: [950, 1750],
     spin: 'back', wildness: 1.32, breaking: true,
   },
 }

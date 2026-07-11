@@ -8,7 +8,7 @@ import { useSettings } from './settings'
  * on fake clocks — the same tick() the render loop calls.
  */
 
-function drive(opts: { makeCalls: boolean; maxSimMs?: number }): void {
+function drive(opts: { makeCalls: boolean; maxSimMs?: number; callWith?: (truthStrike: boolean) => 'ball' | 'strike' }): void {
   const maxSimMs = opts.maxSimMs ?? 15 * 60 * 1000
   const step = 50
   let simulated = 0
@@ -19,7 +19,8 @@ function drive(opts: { makeCalls: boolean; maxSimMs?: number }): void {
     g.tick(performance.now())
     const after = useGame.getState()
     if (after.phase === 'call' && opts.makeCalls && after.active) {
-      after.makeCall(after.active.pitch.truthStrike ? 'strike' : 'ball')
+      const truth = after.active.pitch.truthStrike
+      after.makeCall(opts.callWith ? opts.callWith(truth) : truth ? 'strike' : 'ball')
     }
     if (after.phase === 'inningOver') return
   }
@@ -66,6 +67,49 @@ describe('game store state machine', () => {
       expect(end.calls.every((c) => c.hesitated)).toBe(true)
       expect(end.calls.every((c) => !c.correct)).toBe(true)
     }
+  })
+
+  it('runs ABS challenges on legend: the robot zone rules, the economy holds', () => {
+    useSettings.setState({ difficulty: 'legend', callWindow: 'auto', pitchSpeed: 'auto', hesitationPolicy: 'miss' })
+    useGame.getState().newGame('ABSNINE')
+    useGame.getState().setDebug({ forceChallenge: true })
+    useGame.getState().playBall()
+    expect(useGame.getState().challengesMax).toBe(2)
+    // An umpire who rings up every take — bait for helmet taps.
+    drive({ makeCalls: true, callWith: () => 'strike' })
+
+    const end = useGame.getState()
+    expect(end.phase).toBe('inningOver')
+    expect(end.sit.over).toBe(true)
+
+    const challenged = end.calls.filter((c) => c.challenged)
+    expect(challenged.length).toBeGreaterThan(0)
+    for (const c of challenged) {
+      // Only strike calls are challengeable, ABS applies physics truth,
+      // and the umpire is graded on the original call.
+      expect(c.playerCall).toBe('strike')
+      expect(c.overturned).toBe(!c.truthStrike)
+      expect(c.correct).toBe(c.truthStrike)
+      expect(c.hesitated).toBe(false)
+    }
+    // Lost challenges burn the budget; overturns are retained.
+    const confirmed = challenged.filter((c) => !c.overturned).length
+    expect(end.challengesLeft).toBe(Math.max(0, 2 - confirmed))
+    expect(end.report?.overturned).toBe(challenged.filter((c) => c.overturned).length)
+
+    useGame.getState().setDebug({ forceChallenge: false })
+    useSettings.setState({ difficulty: 'pro' })
+  })
+
+  it('never challenges outside legend', () => {
+    useSettings.setState({ difficulty: 'pro', callWindow: 'auto', pitchSpeed: 'auto' })
+    useGame.getState().newGame('NOABS1')
+    useGame.getState().playBall()
+    expect(useGame.getState().challengesMax).toBe(0)
+    drive({ makeCalls: true, callWith: () => 'strike' })
+    const end = useGame.getState()
+    expect(end.phase).toBe('inningOver')
+    expect(end.calls.every((c) => !c.challenged)).toBe(true)
   })
 
   it('is seed-reproducible at the store level', () => {
