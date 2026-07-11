@@ -11,13 +11,13 @@ export interface TeamDef {
   accent: string
 }
 
-// Fictional clubs — no real MLB marks.
+
 export const HOME_TEAM: TeamDef = {
-  city: 'Cascadia', name: 'Ballot Boxers', abbr: 'CBB',
+  city: 'Ronald', name: 'Rumps', abbr: 'RUM',
   primary: '#123b5c', accent: '#3fd9c4',
 }
 export const AWAY_TEAM: TeamDef = {
-  city: 'Ironbend', name: 'Filibusters', abbr: 'IFB',
+  city: 'Michelle Obama', name: 'is a Mans', abbr: 'MOM',
   primary: '#3a3d47', accent: '#ff7a45',
 }
 
