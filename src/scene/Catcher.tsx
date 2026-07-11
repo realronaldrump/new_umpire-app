@@ -27,13 +27,14 @@ export function Catcher() {
 
     const a = g.active
     const now = performance.now()
+    const defensiveChallenge = g.phase === 'challenge' && g.absChallenge?.challengerSide === 'defense'
 
     // Body slides a touch toward the setup target.
     const setupX = a ? clamp(a.pitch.intended.x * 0.42, -0.85, 0.85) : 0
     root.position.x += (setupX - root.position.x) * Math.min(1, delta * 3)
     root.position.z = 3.55
     // Breathing bob.
-    root.position.y = Math.sin(now / 900) * 0.015
+    root.position.y = Math.sin(now / 900) * 0.015 + (defensiveChallenge ? 0.12 : 0)
 
     // Mitt target in scene coords (game y=-2.7 plane → scene z=2.7).
     if (!a || g.phase === 'newBatter' || g.phase === 'reveal' || g.phase === 'swingResult') {
@@ -52,13 +53,16 @@ export function Catcher() {
         clamp(a.pitch.intended.z + (cz - a.pitch.intended.z) * k, 0.35, 4.6),
         2.62,
       )
-    } else if (g.phase === 'call') {
+    } else if (g.phase === 'call' || g.phase === 'challengeWindow') {
       const cx = a.catchPos.x + a.framing.x
       const cz = a.catchPos.z + a.framing.z
       // Receive with a little give, then stick the frame.
       const sinceCatch = now - (a.flightStartMs + a.flightDurMs)
       const give = Math.exp(-sinceCatch / 110) * 0.24
       target.current.set(cx, clamp(cz, 0.3, 4.6), 2.62 + give)
+    } else if (defensiveChallenge) {
+      // Pop the mitt up as the catcher signals the battery's ABS challenge.
+      target.current.set(setupX + 0.45, 2.75 + Math.sin(now / 150) * 0.08, 2.48)
     }
 
     const speed = g.phase === 'flight' ? 14 : 6

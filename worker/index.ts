@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 import { decideSwing, resolveSwing } from '../src/game/batter'
-import { DIFFICULTY, TIMING } from '../src/game/constants'
+import { ABS_CHALLENGES_PER_SIDE, DIFFICULTY, TIMING } from '../src/game/constants'
 import {
   applyCalledPitch, applyHbp, applySwing, createScenario, leverageOf, nextBatter,
   type PlayEvent, type Situation,
@@ -58,6 +58,7 @@ const PITCH_SELECT_MS = 12_000
 const COMMAND_MS = 1_600
 const ROUND_INTRO_MS = 1_800
 const PRE_PITCH_MS = 900
+const CHALLENGE_WINDOW_MS = 2_200
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -151,6 +152,9 @@ export class RoomDurableObject extends DurableObject<Env> {
         break
       case 'umpCall':
         await this.handleUmpCall(ws, state, player, message.call)
+        break
+      case 'pitcherChallenge':
+        await this.handlePitcherChallenge(ws, state, player)
         break
       case 'resumeReady':
         await this.handleResumeReady(ws, state, player)
@@ -305,8 +309,28 @@ export class RoomDurableObject extends DurableObject<Env> {
     if (state.callDeadline !== null && Date.now() > state.callDeadline + CALL_GRACE_MS * this.timingScale) {
       return this.sendError(ws, state, 'LATE_CALL', 'The call window has closed.')
     }
+    if (call === 'ball' && state.pitcherChallengesLeft > 0) {
+      state.pendingCall = 'ball'
+      state.callDeadline = null
+      state.banner = {
+        key: state.bannerKey++, title: 'BALL — CHALLENGE WINDOW',
+        sub: `${state.pitcherChallengesLeft} ABS challenge${state.pitcherChallengesLeft === 1 ? '' : 's'} available to the pitcher`, tone: 'neutral',
+      }
+      this.enter(state, 'challengeWindow', CHALLENGE_WINDOW_MS)
+      await this.commit(state, 'phaseChanged')
+      return
+    }
     this.gradeCall(state, call, false)
     await this.commit(state, 'playResolved')
+  }
+
+  private async handlePitcherChallenge(ws: WebSocket, state: StoredRoom, player: InternalPlayer): Promise<void> {
+    if (state.status !== 'playing' || state.phase !== 'challengeWindow' || state.pitcherId !== player.id ||
+        state.pendingCall !== 'ball' || !state.active || state.pitcherChallengesLeft <= 0) {
+      return this.sendError(ws, state, 'BAD_CHALLENGE', 'The active pitcher cannot challenge this call.')
+    }
+    this.startPitcherChallenge(state)
+    await this.commit(state, 'phaseChanged')
   }
 
   private async handleResumeReady(ws: WebSocket, state: StoredRoom, player: InternalPlayer): Promise<void> {
@@ -366,6 +390,10 @@ export class RoomDurableObject extends DurableObject<Env> {
     state.pitchIntent = null
     state.commandQuality = null
     state.commandQualities = []
+    state.pitcherChallengesLeft = ABS_CHALLENGES_PER_SIDE
+    state.pitcherChallengesMax = ABS_CHALLENGES_PER_SIDE
+    state.pendingCall = null
+    state.absChallenge = null
     for (const player of state.players) if (player) player.ready = false
     this.enter(state, 'roundIntro', ROUND_INTRO_MS)
   }
@@ -403,6 +431,16 @@ export class RoomDurableObject extends DurableObject<Env> {
       case 'call':
         this.gradeCall(state, 'ball', true)
         break
+      case 'challengeWindow':
+        state.pendingCall = null
+        this.gradeCall(state, 'ball', false)
+        break
+      case 'challenge':
+        this.enter(state, 'absReveal', TIMING.absTrackMs + TIMING.absVerdictMs)
+        break
+      case 'absReveal':
+        this.resolvePitcherChallenge(state)
+        break
       case 'reveal': case 'swingResult':
         this.afterResolution(state)
         break
@@ -418,6 +456,8 @@ export class RoomDurableObject extends DurableObject<Env> {
     state.pitchIntent = null
     state.commandQuality = null
     state.callDeadline = null
+    state.pendingCall = null
+    state.absChallenge = null
     state.banner = {
       key: state.bannerKey++, title: `NOW BATTING · ${batter.name.toUpperCase()}`,
       sub: `ROUND ${state.round} · ${state.sit.outs} OUT${state.sit.outs === 1 ? '' : 'S'}`, tone: 'neutral',
@@ -493,6 +533,74 @@ export class RoomDurableObject extends DurableObject<Env> {
       tone: result.atBatOver ? 'gold' : 'neutral',
     }
     state.callDeadline = null
+    this.enter(state, 'reveal', TIMING.revealMs + (result.atBatOver ? TIMING.revealAtBatEndBonusMs : 0))
+  }
+
+  private startPitcherChallenge(state: StoredRoom): void {
+    if (!state.active) return
+    const { pitch, batter } = state.active
+    const zone = zoneFor(batter)
+    state.pendingCall = null
+    state.absChallenge = {
+      challengerLabel: 'PITCHER / CATCHER',
+      challengerSide: 'defense',
+      callOnField: 'ball',
+      truthStrike: pitch.truthStrike,
+      overturned: pitch.truthStrike,
+      verdictPlayed: false,
+      countBefore: `${state.sit.balls}-${state.sit.strikes}`,
+      leverage: leverageOf(state.sit),
+      edgeDistIn: pitch.metrics.edgeDistIn,
+      cross: { x: pitch.zonePoint.x, z: pitch.zonePoint.z },
+      zoneTopFt: zone.topFt,
+      zoneBotFt: zone.botFt,
+      challengesBefore: state.pitcherChallengesLeft,
+      challengesMax: state.pitcherChallengesMax,
+    }
+    state.banner = {
+      key: state.bannerKey++, title: 'PITCHER / CATCHER CHALLENGES THE CALL',
+      sub: 'BATTERY SIGNAL — AUTOMATED BALL-STRIKE REVIEW', tone: 'bad',
+    }
+    this.pushEvents(state, [{ kind: 'info', text: 'The pitcher and catcher challenge the called ball — ABS review.', runs: 0 }])
+    this.enter(state, 'challenge', TIMING.challengeMs)
+  }
+
+  private resolvePitcherChallenge(state: StoredRoom): void {
+    if (!state.active || !state.absChallenge) return
+    const challenge = state.absChallenge
+    const { pitch, batter } = state.active
+    const applied = pitch.truthStrike ? 'strike' : 'ball'
+    const sit = structuredClone(state.sit)
+    const result = applyCalledPitch(sit, applied, batter.name)
+    const zone = zoneFor(batter)
+    const record: CallRecord = {
+      pitchNo: sit.totalPitches, batterName: batter.name, countBefore: challenge.countBefore,
+      playerCall: 'ball', truthStrike: pitch.truthStrike, correct: !pitch.truthStrike, hesitated: false,
+      edgeDistIn: pitch.metrics.edgeDistIn, nearestEdge: pitch.metrics.nearestEdge,
+      leverage: challenge.leverage, endedAtBat: result.atBatOver,
+      note: (challenge.overturned
+        ? 'Pitcher/catcher challenge overturned — ABS changed the call to strike. '
+        : 'Pitcher/catcher challenge confirmed the ball call. ') + describeTake(false, pitch.metrics),
+      cross: { x: pitch.zonePoint.x, z: pitch.zonePoint.z }, zoneTopFt: zone.topFt, zoneBotFt: zone.botFt,
+      challenged: true, overturned: challenge.overturned,
+    }
+    state.sit = sit
+    state.calls.push(record)
+    state.pendingAtBatOver = result.atBatOver
+    state.pitcherChallengesLeft = challenge.overturned
+      ? state.pitcherChallengesLeft
+      : Math.max(0, state.pitcherChallengesLeft - 1)
+    state.absChallenge = null
+    state.reveal = { record, headline: result.headline, atBatOver: result.atBatOver, batterHand: batter.hand }
+    this.pushEvents(state, [
+      { kind: 'info', text: challenge.overturned ? 'ABS overturns ball — the pitcher keeps the challenge.' : 'ABS confirms ball — challenge lost.', runs: 0 },
+      ...result.events,
+    ])
+    state.banner = {
+      key: state.bannerKey++, title: `${challenge.overturned ? 'OVERTURNED' : 'CONFIRMED'} · ${result.headline}`,
+      sub: result.atBatOver ? undefined : `Count ${sit.balls}-${sit.strikes}`,
+      tone: result.atBatOver ? 'gold' : challenge.overturned ? 'bad' : 'good',
+    }
     this.enter(state, 'reveal', TIMING.revealMs + (result.atBatOver ? TIMING.revealAtBatEndBonusMs : 0))
   }
 
@@ -626,7 +734,15 @@ export class RoomDurableObject extends DurableObject<Env> {
 
   private async loadOrCreate(roomCode: string): Promise<StoredRoom> {
     const existing = await this.loadRoom()
-    if (existing) return existing
+    if (existing) {
+      // Rooms live for up to two hours; fill fields introduced with protocol v2
+      // so a rolling deploy does not strand an in-progress series.
+      existing.pitcherChallengesMax ??= ABS_CHALLENGES_PER_SIDE
+      existing.pitcherChallengesLeft ??= existing.pitcherChallengesMax
+      existing.pendingCall ??= null
+      existing.absChallenge ??= null
+      return existing
+    }
     const rng = createRng(`multiplayer:${roomCode}`)
     const scenario = createScenario(rng)
     const now = Date.now()
@@ -637,6 +753,8 @@ export class RoomDurableObject extends DurableObject<Env> {
       seedText: roomCode, sit: structuredClone(scenario.situation), lineup: generateLineup(rng), pitcher: generateCloser(rng),
       active: null, reveal: null, banner: null, ticker: [], calls: [], callDeadline: null,
       pendingAtBatOver: false, pitchIntent: null, commandQuality: null, roundSummaries: [],
+      pitcherChallengesLeft: ABS_CHALLENGES_PER_SIDE, pitcherChallengesMax: ABS_CHALLENGES_PER_SIDE,
+      pendingCall: null, absChallenge: null,
       seriesResult: null, disconnectDeadline: null, revision: 0,
       initialSituation: structuredClone(scenario.situation), initialHomeScore: scenario.situation.homeScore,
       initialTotalPitches: scenario.situation.totalPitches, commandQualities: [], firstPitcherId: null,

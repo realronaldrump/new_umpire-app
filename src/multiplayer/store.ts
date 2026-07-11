@@ -34,6 +34,7 @@ interface MultiplayerState {
   choosePitch: (typeKey: PitchTypeKey, targetIndex: number) => void
   release: (commandQuality: number) => void
   call: (call: 'ball' | 'strike') => void
+  challenge: () => void
   clearError: () => void
   leave: () => void
 }
@@ -86,6 +87,7 @@ export const useMultiplayer = create<MultiplayerState>()((set, get) => ({
   choosePitch: (typeKey, targetIndex) => send({ type: 'pitchIntent', intent: { typeKey, targetIndex } }),
   release: (commandQuality) => send({ type: 'release', commandQuality: Math.max(0, Math.min(1, commandQuality)) }),
   call: (call) => send({ type: 'umpCall', call }),
+  challenge: () => send({ type: 'pitcherChallenge' }),
   clearError: () => set({ error: null }),
   leave: () => leaveRoom(set),
 }))
@@ -252,7 +254,15 @@ function playRemoteAudio(previous: RoomSnapshot | null, next: RoomSnapshot): voi
     audio.stopWhoosh()
     audio.mittPop(next.active.pitch.mph)
   }
-  if (next.phase === 'reveal' && next.reveal && !next.reveal.record.hesitated) {
+  if (next.phase === 'challengeWindow' && previous.phase === 'call') {
+    audio.umpCall('ball', useSettings.getState().umpVoice)
+  }
+  if (next.phase === 'challenge' && previous.phase !== 'challenge') audio.challengeBuzz()
+  if (next.phase === 'absReveal' && previous.phase !== 'absReveal') audio.absTracking()
+  if (next.phase === 'reveal' && previous.phase === 'absReveal' && previous.absChallenge && !useGame.getState().absChallenge?.verdictPlayed) {
+    audio.absVerdict(previous.absChallenge.overturned)
+  }
+  if (next.phase === 'reveal' && next.reveal && !next.reveal.record.hesitated && !next.reveal.record.challenged) {
     audio.stopWhoosh()
     audio.umpCall(next.reveal.record.playerCall, useSettings.getState().umpVoice)
   }

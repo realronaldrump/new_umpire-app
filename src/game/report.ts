@@ -17,9 +17,9 @@ export interface CallRecord {
   cross: { x: number; z: number }
   zoneTopFt: number
   zoneBotFt: number
-  /** ABS challenge (single-player Legend): the batter contested this strike. */
+  /** ABS challenge: the batting side or battery contested this call. */
   challenged?: boolean
-  /** …and the robot zone sided with him. */
+  /** …and the robot zone changed the call. */
   overturned?: boolean
 }
 
@@ -36,7 +36,7 @@ export interface ReportCard {
   hesitations: number
   blownHighLeverage: CallRecord[]
   framingResisted: number
-  /** Calls of yours the ABS overturned on a batter challenge. */
+  /** Calls of yours that ABS overturned. */
   overturned: number
 }
 

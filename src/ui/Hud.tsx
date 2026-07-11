@@ -36,6 +36,9 @@ function ScoreBug() {
   const sit = useGame((s) => s.sit)
   const challengesLeft = useGame((s) => s.challengesLeft)
   const challengesMax = useGame((s) => s.challengesMax)
+  const defensiveChallengesLeft = useGame((s) => s.defensiveChallengesLeft)
+  const defensiveChallengesMax = useGame((s) => s.defensiveChallengesMax)
+  const mode = useGame((s) => s.mode)
   return (
     <div className="scorebug panel">
       <div className="scorebug__teams">
@@ -58,8 +61,13 @@ function ScoreBug() {
           <span className="countline"><em>S</em><Dots n={sit.strikes} of={2} color="var(--red)" /></span>
           <span className="countline"><em>O</em><Dots n={sit.outs} of={2} color="var(--gold)" shape="square" /></span>
           {challengesMax > 0 && (
-            <span className="countline countline--abs" title="Batter ABS challenges remaining">
-              <em>ABS</em><Dots n={challengesLeft} of={challengesMax} color="var(--teal)" />
+            <span className="countline countline--abs" title={mode === 'multiplayer' ? 'Pitcher ABS challenges remaining' : 'Batting-side ABS challenges remaining'}>
+              <em>{mode === 'multiplayer' ? 'ABS P' : 'ABS B'}</em><Dots n={challengesLeft} of={challengesMax} color="var(--teal)" />
+            </span>
+          )}
+          {mode === 'single' && defensiveChallengesMax > 0 && (
+            <span className="countline countline--abs" title="Pitcher/catcher ABS challenges remaining">
+              <em>ABS D</em><Dots n={defensiveChallengesLeft} of={defensiveChallengesMax} color="var(--gold)" />
             </span>
           )}
         </div>

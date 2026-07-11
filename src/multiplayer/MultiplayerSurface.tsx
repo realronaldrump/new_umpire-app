@@ -24,6 +24,7 @@ export function MultiplayerSurface() {
     <>
       <MultiplayerHud snapshot={snapshot} />
       <PitcherControls snapshot={snapshot} />
+      <PitcherChallengePrompt snapshot={snapshot} />
       {snapshot.status === 'disconnectPaused' && <ReconnectScreen snapshot={snapshot} />}
     </>
   )
@@ -260,6 +261,36 @@ function PitcherControls({ snapshot }: { snapshot: RoomSnapshot }) {
           <button className="btn btn--gold" onClick={() => release(quality)}>DELIVER</button>
         </div>
       )}
+    </section>
+  )
+}
+
+function PitcherChallengePrompt({ snapshot }: { snapshot: RoomSnapshot }) {
+  const playerId = useMultiplayer((state) => state.playerId)
+  const offset = useMultiplayer((state) => state.serverOffsetMs)
+  const challenge = useMultiplayer((state) => state.challenge)
+  const [remaining, setRemaining] = useState(0)
+  const role = multiplayerRole(snapshot, playerId)
+
+  useEffect(() => {
+    if (snapshot.phase !== 'challengeWindow' || snapshot.phaseDeadline === null) return
+    let frame = 0
+    const update = () => {
+      const ms = Math.max(0, snapshot.phaseDeadline! - (Date.now() + offset))
+      setRemaining(ms)
+      if (ms > 0) frame = requestAnimationFrame(update)
+    }
+    update()
+    return () => cancelAnimationFrame(frame)
+  }, [offset, snapshot.phase, snapshot.phaseDeadline])
+
+  if (role !== 'pitcher' || snapshot.phase !== 'challengeWindow') return null
+  return (
+    <section className="pitch-challenge panel" role="dialog" aria-label="Pitcher ABS challenge window">
+      <span className="pitch-challenge__kicker">CALLED BALL · {Math.ceil(remaining / 100) / 10}s</span>
+      <strong>THINK IT CAUGHT THE ZONE?</strong>
+      <span>{snapshot.pitcherChallengesLeft} of {snapshot.pitcherChallengesMax} challenges remaining · successful challenges are retained</span>
+      <button className="btn btn--gold" onClick={challenge}>CHALLENGE WITH ABS</button>
     </section>
   )
 }

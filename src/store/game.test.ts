@@ -101,11 +101,37 @@ describe('game store state machine', () => {
     useSettings.setState({ difficulty: 'pro' })
   })
 
+  it('lets the pitcher/catcher challenge called balls and retain successful challenges', () => {
+    useSettings.setState({ difficulty: 'legend', callWindow: 'auto', pitchSpeed: 'auto', hesitationPolicy: 'miss' })
+    useGame.getState().setDebug({ forceChallenge: false })
+    const challenged = []
+
+    for (const seed of ['BATTERY1', 'BATTERY2', 'BATTERY3']) {
+      useGame.getState().newGame(seed)
+      useGame.getState().playBall()
+      expect(useGame.getState().defensiveChallengesMax).toBe(2)
+      drive({ makeCalls: true, callWith: () => 'ball' })
+
+      const end = useGame.getState()
+      const defensive = end.calls.filter((call) => call.challenged && call.playerCall === 'ball')
+      challenged.push(...defensive)
+      expect(end.defensiveChallengesLeft).toBe(Math.max(0, 2 - defensive.filter((call) => !call.overturned).length))
+      for (const call of defensive) {
+        expect(call.overturned).toBe(call.truthStrike)
+        expect(call.correct).toBe(!call.truthStrike)
+      }
+    }
+
+    expect(challenged.length).toBeGreaterThan(0)
+    useSettings.setState({ difficulty: 'pro' })
+  })
+
   it('never challenges outside legend', () => {
     useSettings.setState({ difficulty: 'pro', callWindow: 'auto', pitchSpeed: 'auto' })
     useGame.getState().newGame('NOABS1')
     useGame.getState().playBall()
     expect(useGame.getState().challengesMax).toBe(0)
+    expect(useGame.getState().defensiveChallengesMax).toBe(0)
     drive({ makeCalls: true, callWith: () => 'strike' })
     const end = useGame.getState()
     expect(end.phase).toBe('inningOver')

@@ -200,7 +200,7 @@ export function Batter({ batter }: { batter: BatterDef }) {
     }
 
     const waggle = Math.sin(nowMs / (530 / look.waggleHz)) * look.waggle
-    const challenging = g.phase === 'challenge'
+    const challenging = g.phase === 'challenge' && g.absChallenge?.challengerSide === 'offense'
     const reviewing = g.phase === 'absReveal'
 
     /* ---- gaze target ---- */

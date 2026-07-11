@@ -100,6 +100,11 @@ describe('room worker', () => {
     if (selection.type !== 'phaseChanged') throw new Error('Expected pitch selection')
     expect(selection.phase).toBe('pitchSelect')
 
+    const earlyChallenge = waitFor(pitcherSocket, 'error')
+    action(pitcherSocket, { type: 'pitcherChallenge' })
+    const challengeDenied = await earlyChallenge
+    expect(challengeDenied.type === 'error' && challengeDenied.code).toBe('BAD_CHALLENGE')
+
     const unauthorized = waitFor(umpireSocket, 'error')
     action(umpireSocket, { type: 'pitchIntent', intent: { typeKey: selection.snapshot.pitcher.arsenal[0][0], targetIndex: 12 } })
     const denied = await unauthorized

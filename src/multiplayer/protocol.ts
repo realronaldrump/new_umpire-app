@@ -6,7 +6,7 @@ import type { PitchTypeKey } from '../game/pitchTypes'
 import type { CallRecord, ReportCard } from '../game/report'
 import type { BatterDef, PitcherDef } from '../game/roster'
 
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 export const ROOM_CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/
 export const TARGET_VALUES = [-1.5, -0.75, 0, 0.75, 1.5] as const
 
@@ -21,6 +21,9 @@ export type MultiplayerPhase =
   | 'windup'
   | 'flight'
   | 'call'
+  | 'challengeWindow'
+  | 'challenge'
+  | 'absReveal'
   | 'reveal'
   | 'swingResult'
   | 'roundComplete'
@@ -67,6 +70,23 @@ export interface RemoteTickerItem {
   id: number
   text: string
   kind: PlayEvent['kind']
+}
+
+export interface AbsChallengeState {
+  challengerLabel: string
+  challengerSide: 'offense' | 'defense'
+  callOnField: 'ball' | 'strike'
+  truthStrike: boolean
+  overturned: boolean
+  verdictPlayed: boolean
+  countBefore: string
+  leverage: number
+  edgeDistIn: number
+  cross: { x: number; z: number }
+  zoneTopFt: number
+  zoneBotFt: number
+  challengesBefore: number
+  challengesMax: number
 }
 
 export interface PitchIntent {
@@ -139,6 +159,10 @@ export interface RoomSnapshot {
   pendingAtBatOver: boolean
   pitchIntent: PitchIntent | null
   commandQuality: number | null
+  pitcherChallengesLeft: number
+  pitcherChallengesMax: number
+  pendingCall: 'ball' | null
+  absChallenge: AbsChallengeState | null
   roundSummaries: RoundSummary[]
   seriesResult: SeriesResult | null
   disconnectDeadline: number | null
@@ -153,6 +177,7 @@ export type ClientMessage =
   | (ClientBase & { type: 'pitchIntent'; intent: PitchIntent })
   | (ClientBase & { type: 'release'; commandQuality: number })
   | (ClientBase & { type: 'umpCall'; call: 'ball' | 'strike' })
+  | (ClientBase & { type: 'pitcherChallenge' })
   | (ClientBase & { type: 'resumeReady' })
   | (ClientBase & { type: 'requestSnapshot' })
   | (ClientBase & { type: 'ping'; sentAt: number })
@@ -201,7 +226,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return (msg.difficulty === 'rookie' || msg.difficulty === 'pro' || msg.difficulty === 'legend') &&
         (msg.name === undefined || (typeof msg.name === 'string' && msg.name.trim().length >= 1 && msg.name.trim().length <= 20))
         ? msg as unknown as ClientMessage : null
-    case 'ready': case 'resumeReady': case 'requestSnapshot':
+    case 'ready': case 'resumeReady': case 'requestSnapshot': case 'pitcherChallenge':
       return msg as unknown as ClientMessage
     case 'pitchIntent': {
       const intent = msg.intent as Record<string, unknown> | undefined

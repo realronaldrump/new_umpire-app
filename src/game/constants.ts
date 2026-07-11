@@ -12,6 +12,9 @@ export const PLATE_HALF_WIDTH_FT = 8.5 / 12
 export const EFFECTIVE_HALF_WIDTH_FT = PLATE_HALF_WIDTH_FT + BALL_RADIUS_FT // 0.829 ft
 export const PLATE_DEPTH_FT = 17 / 12
 
+/** Each side starts with this many ABS challenges and retains successful ones. */
+export const ABS_CHALLENGES_PER_SIDE = 2
+
 /** Pitching rubber, measured from our origin (60.5 ft from the plate's back point). */
 export const RUBBER_Y_FT = 60.5 - PLATE_DEPTH_FT
 export const MOUND_CENTER_Y_FT = 59 - PLATE_DEPTH_FT
@@ -35,7 +38,7 @@ export interface DifficultyPreset {
   borderlineBias: number
   /** Max visual mitt-shift the catcher uses to steal borderline calls. */
   framingInches: number
-  /** ABS challenges the batting side gets per game (single-player only). */
+  /** ABS challenges each side gets per game in single-player. */
   absChallenges: number
 }
 
@@ -65,13 +68,13 @@ export const DIFFICULTY: Record<Difficulty, DifficultyPreset> = {
   legend: {
     key: 'legend',
     label: 'Legend',
-    tagline: 'Full speed · razor margins · hitters can challenge your calls with ABS',
+    tagline: 'Full speed · razor margins · both sides can challenge your calls with ABS',
     zoneVisibleDuringPitch: false,
     callWindowMs: 975,
     timeScale: 1.0,
     borderlineBias: 0.46,
     framingInches: 3.4,
-    absChallenges: 2,
+    absChallenges: ABS_CHALLENGES_PER_SIDE,
   },
 }
 

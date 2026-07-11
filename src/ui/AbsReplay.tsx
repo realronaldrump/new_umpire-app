@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BALL_RADIUS_FT, EFFECTIVE_HALF_WIDTH_FT, PLATE_HALF_WIDTH_FT, TIMING } from '../game/constants'
+import { audio } from '../audio/engine'
 import { useGame } from '../store/game'
 
 const FX = (x: number) => 130 + x * 52
@@ -15,8 +16,6 @@ const easeOut = (t: number) => 1 - (1 - t) * (1 - t) * (1 - t)
  */
 export function AbsReplay() {
   const challenge = useGame((s) => s.absChallenge)
-  const challengesLeft = useGame((s) => s.challengesLeft)
-  const challengesMax = useGame((s) => s.challengesMax)
   const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
@@ -30,6 +29,14 @@ export function AbsReplay() {
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
   }, [])
+
+  useEffect(() => {
+    const game = useGame.getState()
+    const live = game.absChallenge
+    if (game.mode !== 'multiplayer' || !live || live.verdictPlayed || elapsed < TIMING.absTrackMs) return
+    audio.absVerdict(live.overturned)
+    useGame.setState({ absChallenge: { ...live, verdictPlayed: true } })
+  }, [elapsed])
 
   if (!challenge) return null
 
@@ -54,7 +61,7 @@ export function AbsReplay() {
   const thirdH = (zt - zb) / 3
 
   const overturned = challenge.overturned
-  const pipsLeft = verdict && !overturned ? Math.max(0, challengesLeft - 1) : challengesLeft
+  const pipsLeft = verdict && !overturned ? Math.max(0, challenge.challengesBefore - 1) : challenge.challengesBefore
   const edgeIn = Math.abs(challenge.edgeDistIn)
   const readout = !locked
     ? 'TRACKING PITCH…'
@@ -65,8 +72,8 @@ export function AbsReplay() {
       <div className={`abs-board ${verdict ? (overturned ? 'abs-board--over' : 'abs-board--conf') : ''}`}>
         <header className="abs-board__head">
           <span className="abs-board__live"><i /> ABS · AUTOMATED BALL-STRIKE</span>
-          <span className="abs-board__title">CHALLENGE — {challenge.batterName.toUpperCase()}</span>
-          <span className="abs-board__count">COUNT {challenge.countBefore} · CALL ON FIELD: STRIKE</span>
+          <span className="abs-board__title">CHALLENGE — {challenge.challengerLabel.toUpperCase()}</span>
+          <span className="abs-board__count">COUNT {challenge.countBefore} · CALL ON FIELD: {challenge.callOnField.toUpperCase()}</span>
         </header>
 
         <div className="abs-board__stage">
@@ -144,15 +151,15 @@ export function AbsReplay() {
           {verdict && (
             <div className={`abs-stamp ${overturned ? 'abs-stamp--over' : 'abs-stamp--conf'}`}>
               <b>{overturned ? 'OVERTURNED' : 'CONFIRMED'}</b>
-              <span>{overturned ? 'THAT PITCH IS A BALL' : 'THE STRIKE CALL STANDS'}</span>
+              <span>{overturned ? `THAT PITCH IS A ${challenge.truthStrike ? 'STRIKE' : 'BALL'}` : `THE ${challenge.callOnField.toUpperCase()} CALL STANDS`}</span>
             </div>
           )}
         </div>
 
         <footer className="abs-board__foot">
           <span className="abs-board__readout">{verdict ? (overturned ? 'CALL REVERSED — THE PARK ERUPTS' : 'CHALLENGE LOST — BOOS RAIN DOWN') : readout}</span>
-          <span className="abs-board__pips" aria-label={`${pipsLeft} of ${challengesMax} challenges remaining`}>
-            CHALLENGES {Array.from({ length: challengesMax }, (_, i) => (
+          <span className="abs-board__pips" aria-label={`${pipsLeft} of ${challenge.challengesMax} challenges remaining`}>
+            CHALLENGES {Array.from({ length: challenge.challengesMax }, (_, i) => (
               <i key={i} className={i < pipsLeft ? 'on' : ''} />
             ))}
           </span>

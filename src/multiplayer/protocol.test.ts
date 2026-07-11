@@ -16,5 +16,6 @@ describe('multiplayer protocol', () => {
     expect(parseClientMessage({ protocolVersion: PROTOCOL_VERSION, type: 'join', roomCode: 'OOPS!!', playerToken: '12345678', name: 'Blue' })).toBeNull()
     expect(parseClientMessage({ protocolVersion: PROTOCOL_VERSION, type: 'release', commandQuality: 1.1 })).toBeNull()
     expect(parseClientMessage({ protocolVersion: PROTOCOL_VERSION, type: 'pitchIntent', intent: { typeKey: 'slider', targetIndex: 25 } })).toBeNull()
+    expect(parseClientMessage({ protocolVersion: PROTOCOL_VERSION, type: 'pitcherChallenge' })?.type).toBe('pitcherChallenge')
   })
 })

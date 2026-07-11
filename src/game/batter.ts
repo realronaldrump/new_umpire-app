@@ -193,3 +193,32 @@ export function decideChallenge(
   if (wouldBeK) p += 0.2
   return rng.chance(clamp(p, 0, 0.5))
 }
+
+/**
+ * ABS challenge (single-player Legend): after a called ball, does the battery
+ * ask for the robot zone? The catcher and pitcher read obvious missed strikes
+ * well, can be tempted by a pitch just off the edge, and get more aggressive
+ * when ball four is at stake.
+ */
+export function decideBatteryChallenge(
+  rng: RNG,
+  pitch: PitchDescriptor,
+  count: Count,
+  challengesLeft: number,
+): boolean {
+  if (challengesLeft <= 0) return false
+  const edge = pitch.metrics.edgeDistIn // >0: ball by that many inches; <0: strike overlap
+  const wouldBeWalk = count.balls === 3
+
+  if (pitch.truthStrike) {
+    let p = 0.58 + Math.min(0.34, Math.max(0, -edge) * 0.11)
+    if (wouldBeWalk) p += 0.16
+    return rng.chance(clamp(p, 0.5, 0.985))
+  }
+
+  // A close miss can still look like a strike from the mound or the crouch.
+  if (edge > 2.4) return false
+  let p = 0.08 + (1 - Math.max(0, edge) / 2.4) * 0.2
+  if (wouldBeWalk) p += 0.12
+  return rng.chance(clamp(p, 0, 0.42))
+}
