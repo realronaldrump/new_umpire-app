@@ -615,6 +615,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     const zone = zoneFor(batter)
     const record: CallRecord = {
       pitchNo: sit.totalPitches, batterName: batter.name, countBefore,
+      pitchType: pitch.typeName, pitchSpeedMph: pitch.mph,
       playerCall: applied, truthStrike: truth, correct, hesitated,
       edgeDistIn: pitch.metrics.edgeDistIn, nearestEdge: pitch.metrics.nearestEdge,
       leverage: leverageOf(state.sit), endedAtBat: result.atBatOver,
@@ -674,6 +675,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     const zone = zoneFor(batter)
     const record: CallRecord = {
       pitchNo: sit.totalPitches, batterName: batter.name, countBefore: challenge.countBefore,
+      pitchType: pitch.typeName, pitchSpeedMph: pitch.mph,
       playerCall: 'ball', truthStrike: pitch.truthStrike, correct: !pitch.truthStrike, hesitated: false,
       edgeDistIn: pitch.metrics.edgeDistIn, nearestEdge: pitch.metrics.nearestEdge,
       leverage: challenge.leverage, endedAtBat: result.atBatOver,
