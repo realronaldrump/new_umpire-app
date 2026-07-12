@@ -10,7 +10,7 @@ import {
   battedTrajectory, generatePitch, posAt, velAt,
   type PitchDescriptor, type Trajectory, type Vec3,
 } from '../game/physics'
-import type { PitchTypeKey } from '../game/pitchTypes'
+import { ALL_PITCH_KEYS, type PitchTypeKey } from '../game/pitchTypes'
 import { computeReport, type CallRecord, type ReportCard } from '../game/report'
 import { createRng, randomSeedText, type RNG } from '../game/rng'
 import { generateCloser, generateLineup, nameOnBack, type BatterDef, type PitcherDef } from '../game/roster'
@@ -683,8 +683,12 @@ export const useGame = create<GameState>()((set, get) => {
       if (s.phase !== 'menu') return
       audio.init()
       audio.uiClick()
+      const practiceArsenal = ALL_PITCH_KEYS
+        .filter((key) => key !== 'knuckleball' && key !== 'eephus')
+        .map((key) => [key, 1] as const)
       set({
         mode: 'practice',
+        pitcher: { ...s.pitcher, arsenal: practiceArsenal },
         calls: [],
         ticker: [],
         active: null,

@@ -146,7 +146,7 @@ export interface PitchContext {
 function choosePitchType(rng: RNG, pitcher: PitcherPhysique, ctx: PitchContext): PitchTypeDef {
   if (ctx.player) return PITCH_TYPES[ctx.player.typeKey]
   if (ctx.forced) return PITCH_TYPES[ctx.forced.typeKey]
-  if (pitcher.specialtyPitch && rng.chance(0.055)) return PITCH_TYPES[pitcher.specialtyPitch]
+  if (pitcher.specialtyPitch && rng.chance(0.06)) return PITCH_TYPES[pitcher.specialtyPitch]
   const ahead = ctx.strikes > ctx.balls || ctx.strikes === 2
   const behind = ctx.balls > ctx.strikes && ctx.balls >= 2
   const entries = pitcher.arsenal.map(([key, w]) => {

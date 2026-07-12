@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ALL_PITCH_KEYS } from '../game/pitchTypes'
 import { useGame } from './game'
 import { useSettings } from './settings'
 
@@ -142,6 +143,10 @@ describe('game store state machine', () => {
     useSettings.setState({ difficulty: 'rookie', callWindow: 'auto', pitchSpeed: 'auto' })
     useGame.getState().newGame('PRACTICE')
     useGame.getState().startPractice()
+
+    expect(useGame.getState().pitcher.arsenal.map(([key]) => key)).toEqual(
+      ALL_PITCH_KEYS.filter((key) => key !== 'knuckleball' && key !== 'eephus'),
+    )
 
     let callsMade = 0
     while (callsMade < 8) {
