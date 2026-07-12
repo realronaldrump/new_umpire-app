@@ -5,6 +5,8 @@ export interface CallRecord {
   pitchNo: number
   batterName: string
   countBefore: string
+  pitchType: string
+  pitchSpeedMph: number
   playerCall: 'ball' | 'strike'
   truthStrike: boolean
   correct: boolean

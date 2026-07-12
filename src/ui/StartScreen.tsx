@@ -6,6 +6,7 @@ import { useGame } from '../store/game'
 import { useSettings } from '../store/settings'
 import { useUi } from '../store/ui'
 import { useMultiplayer } from '../multiplayer/store'
+import { Leaderboard } from '../leaderboard/Leaderboard'
 
 const DIFF_KEYS: Difficulty[] = ['rookie', 'pro', 'legend']
 
@@ -16,6 +17,7 @@ export function StartScreen() {
   const difficulty = useSettings((s) => s.difficulty)
   const setSettings = useSettings((s) => s.set)
   const [seedInput, setSeedInput] = useState('')
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false)
 
   if (phase !== 'menu') return null
 
@@ -32,6 +34,7 @@ export function StartScreen() {
   }
 
   return (
+    <>
     <div className="overlay start">
       <div className="start__inner">
         <header className="start__masthead">
@@ -118,8 +121,16 @@ export function StartScreen() {
             SOLO NINTH
           </button>
 
+          <button className="btn btn--practice" onClick={() => useGame.getState().startPractice()}>
+            PRACTICE PITCHES
+          </button>
+
           <button className="btn btn--versus" onClick={() => useMultiplayer.getState().openEntry()}>
             2-PLAYER SERIES
+          </button>
+
+          <button className="btn btn--leaderboard" onClick={() => setLeaderboardOpen(true)}>
+            ONLINE LEADERBOARD
           </button>
 
           <button
@@ -138,5 +149,7 @@ export function StartScreen() {
         </p>
       </div>
     </div>
+    {leaderboardOpen && <Leaderboard onClose={() => setLeaderboardOpen(false)} />}
+    </>
   )
 }

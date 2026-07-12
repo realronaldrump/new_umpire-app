@@ -183,13 +183,30 @@ interface ZoneTrajectory {
   a: { x: number; y: number; z: number }
   T: number
   catchT: number
+  flutter?: {
+    xAmpFt: number
+    zAmpFt: number
+    xCycles: number
+    zCycles: number
+    xPhase: number
+    zPhase: number
+  }
 }
 
-const atTime = (traj: ZoneTrajectory, t: number) => ({
-  x: traj.p0.x + traj.v0.x * t + 0.5 * traj.a.x * t * t,
-  y: traj.p0.y + traj.v0.y * t + 0.5 * traj.a.y * t * t,
-  z: traj.p0.z + traj.v0.z * t + 0.5 * traj.a.z * t * t,
-})
+const atTime = (traj: ZoneTrajectory, t: number) => {
+  const point = {
+    x: traj.p0.x + traj.v0.x * t + 0.5 * traj.a.x * t * t,
+    y: traj.p0.y + traj.v0.y * t + 0.5 * traj.a.y * t * t,
+    z: traj.p0.z + traj.v0.z * t + 0.5 * traj.a.z * t * t,
+  }
+  if (traj.flutter) {
+    const p = Math.max(0, Math.min(1, t / Math.max(1e-6, traj.catchT)))
+    const envelope = p * p * (3 - 2 * p)
+    point.x += traj.flutter.xAmpFt * envelope * Math.sin(2 * Math.PI * traj.flutter.xCycles * p + traj.flutter.xPhase)
+    point.z += traj.flutter.zAmpFt * envelope * Math.sin(2 * Math.PI * traj.flutter.zCycles * p + traj.flutter.zPhase)
+  }
+  return point
+}
 
 function timeAtY(traj: ZoneTrajectory, targetY: number, fallback: number): number {
   const A = 0.5 * traj.a.y

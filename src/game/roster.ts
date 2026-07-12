@@ -239,6 +239,9 @@ export function generateCloser(rng: RNG): PitcherDef {
     }
   }
   const veloOffsetMph = clamp(rng.gauss(0.8, 1.1), -2, 3.2)
+  const specialtyPitch = rng.weighted([
+    ['knuckleball', 0.28], ['eephus', 0.22], [null, 0.5],
+  ] as const)
   return {
     name: uniqueName(rng, used),
     number: 11 + rng.int(88),
@@ -249,6 +252,7 @@ export function generateCloser(rng: RNG): PitcherDef {
     releaseHeightFt: rng.range(5.3, 6.3),
     releaseYFt: rng.range(53.2, 54.2),
     arsenal,
+    specialtyPitch,
     pitchProfiles,
   }
 }

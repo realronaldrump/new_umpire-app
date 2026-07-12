@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { audio } from '../audio/engine'
 import { AWAY_TEAM, HOME_TEAM } from '../game/roster'
 import { useGame } from '../store/game'
 import { KZone, VerdictChip } from './ReplayCard'
+import { savedLeaderboardName, submitLeaderboardResult } from '../leaderboard/api'
+import { useSettings } from '../store/settings'
 
 export function EndScreen() {
   const phase = useGame((s) => s.phase)
@@ -10,6 +13,9 @@ export function EndScreen() {
   const sit = useGame((s) => s.sit)
   const seed = useGame((s) => s.seedText)
   const calls = useGame((s) => s.calls)
+  const difficulty = useSettings((s) => s.difficulty)
+  const [name, setName] = useState(savedLeaderboardName)
+  const [submitState, setSubmitState] = useState<'idle' | 'posting' | 'posted' | 'error'>('idle')
   if (mode === 'multiplayer' || phase !== 'inningOver' || !report) return null
 
   const resultLine = sit.walkOff
@@ -19,6 +25,17 @@ export function EndScreen() {
       : `${AWAY_TEAM.name.toUpperCase()} HOLD ON ${sit.awayScore}–${sit.homeScore}`
 
   const worst = report.blownHighLeverage
+  const postScore = async () => {
+    if (!name.trim() || report.totalCalls < 1 || submitState === 'posting' || submitState === 'posted') return
+    setSubmitState('posting')
+    try {
+      await submitLeaderboardResult({
+        name: name.trim(), difficulty, score: report.gradeScore, accuracyPct: report.accuracyPct,
+        weightedPct: report.weightedPct, totalCalls: report.totalCalls, seed,
+      })
+      setSubmitState('posted')
+    } catch { setSubmitState('error') }
+  }
   const again = (sameSeed: boolean) => {
     audio.uiClick()
     useGame.getState().newGame(sameSeed ? seed : undefined)
@@ -75,6 +92,16 @@ export function EndScreen() {
         {worst.length === 0 && calls.length > 0 && (
           <p className="end__clean">No high-leverage misses. That's how you keep a clubhouse quiet.</p>
         )}
+
+        <section className="end__online panel">
+          <div><span>ONLINE SOLO LEADERBOARD</span><b>{report.gradeScore.toFixed(1)} QUALIFYING SCORE</b></div>
+          <label><span>UMPIRE NAME</span><input value={name} maxLength={20} placeholder="Your name" onChange={(event) => { setName(event.target.value); setSubmitState('idle') }} /></label>
+          <button className="btn btn--gold" disabled={!name.trim() || report.totalCalls < 1 || submitState === 'posting' || submitState === 'posted'} onClick={postScore}>
+            {submitState === 'posting' ? 'POSTING…' : submitState === 'posted' ? 'IN THE BOOK' : 'POST SCORE'}
+          </button>
+          {submitState === 'error' && <small>Could not reach the online scorebook.</small>}
+          {report.totalCalls < 1 && <small>A game needs at least one called pitch to qualify.</small>}
+        </section>
 
         <div className="start__row end__row">
           <button className="btn btn--gold btn--play" onClick={() => again(false)}>NEW NINTH</button>

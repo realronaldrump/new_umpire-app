@@ -22,7 +22,7 @@ export function KZone({ record, compact = false }: { record: CallRecord; compact
 
   return (
     <svg
-      viewBox="0 0 220 250"
+      viewBox="0 0 220 270"
       className={compact ? 'kzone kzone--compact' : 'kzone'}
       role="img"
       aria-label={`Pitch was closest to the rulebook zone at ${record.cross.x.toFixed(2)} feet horizontal, ${record.cross.z.toFixed(2)} feet high; true call ${record.truthStrike ? 'strike' : 'ball'}`}
@@ -71,6 +71,18 @@ export function KZone({ record, compact = false }: { record: CallRecord; compact
           {record.truthStrike ? 'STRIKE' : 'BALL'}
         </text>
       )}
+      <text
+        x={110}
+        y={260}
+        textAnchor="middle"
+        fill="rgba(240,246,252,0.9)"
+        fontSize={compact ? 13 : 11}
+        fontFamily="Archivo, sans-serif"
+        fontWeight={700}
+        letterSpacing={compact ? 0 : 0.5}
+      >
+        {record.pitchType.toUpperCase()} · {Math.round(record.pitchSpeedMph)} MPH
+      </text>
     </svg>
   )
 }

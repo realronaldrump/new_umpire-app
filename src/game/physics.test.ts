@@ -141,4 +141,51 @@ describe('pitch physics', () => {
     }
     expect(averageMiss(1)).toBeLessThan(averageMiss(0.25) * 0.5)
   })
+
+  it('turns multiplayer gesture error into a directional location miss', () => {
+    const batter = { heightIn: 73, hand: 'R' as const }
+    const centered = generatePitch(createRng('gesture-direction'), testPitcher('R'), batter, {
+      balls: 1, strikes: 1, borderlineBias: 0,
+      player: { typeKey: 'slider', target: { u: 0, v: 0 }, commandQuality: 1, executionMiss: { u: 0, v: 0 } },
+    })
+    const missed = generatePitch(createRng('gesture-direction'), testPitcher('R'), batter, {
+      balls: 1, strikes: 1, borderlineBias: 0,
+      player: { typeKey: 'slider', target: { u: 0, v: 0 }, commandQuality: 1, executionMiss: { u: 0.4, v: -0.35 } },
+    })
+    expect(missed.cross.x).toBeGreaterThan(centered.cross.x)
+    expect(missed.cross.z).toBeLessThan(centered.cross.z)
+  })
+
+  it('gives the eephus a slow, exaggerated looping arc', () => {
+    const batter = { heightIn: 73, hand: 'R' as const }
+    const pitch = generatePitch(createRng('eephus-loop'), testPitcher('R'), batter, {
+      balls: 1, strikes: 1, borderlineBias: 0,
+      forced: { typeKey: 'eephus', loc: 'center' },
+    })
+    let apex = pitch.traj.p0.z
+    for (let i = 0; i <= 100; i++) apex = Math.max(apex, posAt(pitch.traj, pitch.traj.T * i / 100).z)
+    expect(pitch.mph).toBeLessThan(60)
+    expect(pitch.traj.T).toBeGreaterThan(0.65)
+    expect(apex - pitch.traj.p0.z).toBeGreaterThan(2.5)
+  })
+
+  it('gives the knuckleball slow, deterministic late flutter', () => {
+    const batter = { heightIn: 73, hand: 'R' as const }
+    const pitch = generatePitch(createRng('knuckle-flutter'), testPitcher('R'), batter, {
+      balls: 1, strikes: 1, borderlineBias: 0,
+      forced: { typeKey: 'knuckleball', loc: 'edge' },
+    })
+    expect(pitch.mph).toBeLessThan(80)
+    expect(pitch.traj.flutter).toBeDefined()
+    let maxFlutter = 0
+    for (let i = 30; i <= 100; i++) {
+      const t = pitch.traj.T * i / 100
+      const actual = posAt(pitch.traj, t)
+      const ballisticX = pitch.traj.p0.x + pitch.traj.v0.x * t + 0.5 * pitch.traj.a.x * t * t
+      const ballisticZ = pitch.traj.p0.z + pitch.traj.v0.z * t + 0.5 * pitch.traj.a.z * t * t
+      maxFlutter = Math.max(maxFlutter, Math.hypot(actual.x - ballisticX, actual.z - ballisticZ))
+    }
+    expect(maxFlutter * 12).toBeGreaterThan(1.4)
+    expect(pitch.metrics.point.x).toBeCloseTo(posAt(pitch.traj, pitch.traj.T).x, 0)
+  })
 })

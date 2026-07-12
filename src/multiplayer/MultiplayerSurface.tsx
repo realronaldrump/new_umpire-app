@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { DIFFICULTY, type Difficulty } from '../game/constants'
 import { PITCH_TYPES } from '../game/pitchTypes'
 import { useMultiplayer, multiplayerRole } from './store'
-import type { RoomSnapshot, RoundSummary } from './protocol'
+import { TARGET_LIMIT, type RoomSnapshot, type RoundSummary } from './protocol'
+import {
+  evaluatePitchGesture, GESTURE_LOAD_Y, GESTURE_RELEASE, GESTURE_START,
+  normalizedPointer, type GesturePoint,
+} from './pitching'
 
 const DIFFICULTIES: Difficulty[] = ['rookie', 'pro', 'legend']
+const SPECIAL_PITCHES = ['knuckleball', 'eephus'] as const
 
 export function MultiplayerSurface() {
   const open = useMultiplayer((state) => state.open)
@@ -140,8 +145,8 @@ function LobbyScreen({
         </div>
 
         <section className="mp-lobby__rules panel">
-          <div><b>MIRRORED NINTHS</b><span>Same score, runners, lineup, and closer.</span></div>
-          <div><b>COIN-FLIP ROLES</b><span>One pitches. One calls. Then you swap.</span></div>
+          <div><b>{snapshot.difficulty === 'legend' ? 'TOP 8TH THROUGH THE 9TH' : 'MIRRORED NINTHS'}</b><span>{snapshot.difficulty === 'legend' ? 'One complete game with four half-innings.' : 'Same score, runners, lineup, and closer.'}</span></div>
+          <div><b>COIN-FLIP ROLES</b><span>{snapshot.difficulty === 'legend' ? 'Pitcher and umpire switch every three outs.' : 'One pitches. One calls. Then you swap.'}</span></div>
           <div><b>BALANCED SERIES</b><span>Pitching and umpiring count equally.</span></div>
         </section>
 
@@ -182,7 +187,7 @@ function MultiplayerHud({ snapshot }: { snapshot: RoomSnapshot }) {
   const opponent = snapshot.players.find((player) => player && player.id !== playerId)
   return (
     <aside className={`mp-rolehud panel mp-rolehud--${role ?? 'waiting'}`}>
-      <span className="mp-rolehud__round">ROUND {snapshot.round} / 2</span>
+      <span className="mp-rolehud__round">{snapshot.difficulty === 'legend' ? `${snapshot.sit.half.toUpperCase()} ${snapshot.sit.inning} · SIDE ${Math.min(4, Math.floor(snapshot.sit.totalOuts / 3) + 1)} / 4` : `ROUND ${snapshot.round} / 2`}</span>
       <strong>{role === 'pitcher' ? 'ON THE MOUND' : role === 'umpire' ? 'BEHIND THE PLATE' : 'WAITING'}</strong>
       <span>{opponent?.name ?? 'Opponent'} · {connection === 'connected' ? 'LIVE' : connection.toUpperCase()} {latency === null ? '' : `· ${latency}ms`}</span>
     </aside>
@@ -196,31 +201,16 @@ function PitcherControls({ snapshot }: { snapshot: RoomSnapshot }) {
   const release = useMultiplayer((state) => state.release)
   const role = multiplayerRole(snapshot, playerId)
   const [pitch, setPitch] = useState(snapshot.pitcher.arsenal[0][0])
-  const [target, setTarget] = useState(12)
-  const [needle, setNeedle] = useState(0)
+  const [target, setTarget] = useState({ u: 0, v: 0 })
+  const selectedSpecial = SPECIAL_PITCHES.includes(pitch as typeof SPECIAL_PITCHES[number])
+  const selectedAvailable = snapshot.pitcher.arsenal.some(([key]) => key === pitch) ||
+    (selectedSpecial && !snapshot.specialPitchesUsed.includes(pitch as typeof SPECIAL_PITCHES[number]))
 
   useEffect(() => {
-    if (snapshot.phase !== 'command' || snapshot.phaseDeadline === null) return
-    let frame = 0
-    const update = () => {
-      const fraction = (Date.now() + offset - snapshot.phaseStartedAt) / Math.max(1, snapshot.phaseDeadline! - snapshot.phaseStartedAt)
-      setNeedle(Math.max(0, Math.min(1, fraction)))
-      if (fraction < 1) frame = requestAnimationFrame(update)
-    }
-    frame = requestAnimationFrame(update)
-    return () => cancelAnimationFrame(frame)
-  }, [offset, snapshot.phase, snapshot.phaseDeadline, snapshot.phaseStartedAt])
-
-  useEffect(() => {
-    if (snapshot.phase === 'pitchSelect') {
-      setPitch(snapshot.pitcher.arsenal[0][0])
-      setTarget(12)
-      setNeedle(0)
-    }
-  }, [snapshot.phase, snapshot.sit.totalPitches, snapshot.pitcher.arsenal])
+    if (!selectedAvailable) setPitch(snapshot.pitcher.arsenal[0][0])
+  }, [selectedAvailable, snapshot.pitcher.arsenal])
 
   if (role !== 'pitcher' || (snapshot.phase !== 'pitchSelect' && snapshot.phase !== 'command')) return null
-  const quality = Math.max(0, 1 - Math.abs(needle - 0.5) / 0.5)
 
   return (
     <section className={`pitch-console panel ${snapshot.phase === 'command' ? 'pitch-console--command' : ''}`}>
@@ -232,36 +222,199 @@ function PitcherControls({ snapshot }: { snapshot: RoomSnapshot }) {
           </div>
           <div className="pitch-console__body">
             <div className="pitch-arsenal">
-              {snapshot.pitcher.arsenal.map(([key]) => (
-                <button key={key} className={pitch === key ? 'on' : ''} onClick={() => setPitch(key)}>
-                  <b>{PITCH_TYPES[key].short}</b><span>{PITCH_TYPES[key].name}</span>
-                </button>
-              ))}
-            </div>
-            <div className="pitch-target" aria-label="Pitch target grid">
-              {Array.from({ length: 25 }, (_, index) => {
-                const row = Math.floor(index / 5)
-                const col = index % 5
-                const zone = row >= 1 && row <= 3 && col >= 1 && col <= 3
-                return <button key={index} aria-label={`Target cell ${index + 1}`} className={`${zone ? 'zone' : 'chase'} ${target === index ? 'on' : ''}`} onClick={() => setTarget(index)} />
+              {[...snapshot.pitcher.arsenal.map(([key]) => key), ...SPECIAL_PITCHES].map((key) => {
+                const special = SPECIAL_PITCHES.includes(key as typeof SPECIAL_PITCHES[number])
+                const spent = special && snapshot.specialPitchesUsed.includes(key as typeof SPECIAL_PITCHES[number])
+                return (
+                  <button key={key} disabled={spent} className={`${pitch === key ? 'on' : ''} ${special ? 'special' : ''}`} onClick={() => setPitch(key)}>
+                    <b>{PITCH_TYPES[key].short}</b><span>{PITCH_TYPES[key].name}</span>{special && <em>{spent ? 'USED' : '1× / AB'}</em>}
+                  </button>
+                )
               })}
-              <span className="pitch-target__zone" aria-hidden />
             </div>
+            <ContinuousTarget snapshot={snapshot} pitch={pitch} target={target} onTarget={setTarget} />
           </div>
           <button className="btn btn--gold pitch-console__set" onClick={() => choosePitch(pitch, target)}>SET · START DELIVERY</button>
         </>
       ) : (
-        <div className="command-meter">
-          <span className="command-meter__kicker">HIT THE GOLD AT RELEASE</span>
-          <div className="command-meter__track">
-            <span className="command-meter__sweet" />
-            <span className="command-meter__needle" style={{ left: `${needle * 100}%` }} />
-          </div>
-          <div className="command-meter__quality">COMMAND {Math.round(quality * 100)}%</div>
-          <button className="btn btn--gold" onClick={() => release(quality)}>DELIVER</button>
-        </div>
+        <DeliveryGesture onRelease={release} />
       )}
     </section>
+  )
+}
+
+function ContinuousTarget({
+  snapshot, pitch, target, onTarget,
+}: {
+  snapshot: RoomSnapshot
+  pitch: keyof typeof PITCH_TYPES
+  target: { u: number; v: number }
+  onTarget: (target: { u: number; v: number }) => void
+}) {
+  const def = PITCH_TYPES[pitch]
+  const profile = snapshot.pitcher.pitchProfiles?.[pitch]
+  const armSideBreak = profile?.hbIn ?? (def.hb[0] + def.hb[1]) / 2
+  const verticalBreak = profile?.ivbIn ?? (def.ivb[0] + def.ivb[1]) / 2
+  const catcherBreak = (snapshot.pitcher.hand === 'R' ? -1 : 1) * armSideBreak
+  const left = (target.u / (TARGET_LIMIT * 2) + 0.5) * 100
+  const top = (0.5 - target.v / (TARGET_LIMIT * 2)) * 100
+  const endLeft = Math.max(3, Math.min(97, left + catcherBreak / 18 * 13))
+  const endTop = Math.max(3, Math.min(97, top - verticalBreak / 18 * 11))
+  const uncertaintyX = Math.min(25, 9 + def.wildness * snapshot.pitcher.commandMult * 6)
+  const uncertaintyY = uncertaintyX * 1.1
+
+  const targetFromPointer = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    onTarget({
+      u: Math.max(-TARGET_LIMIT, Math.min(TARGET_LIMIT, ((event.clientX - rect.left) / rect.width - 0.5) * TARGET_LIMIT * 2)),
+      v: Math.max(-TARGET_LIMIT, Math.min(TARGET_LIMIT, (0.5 - (event.clientY - rect.top) / rect.height) * TARGET_LIMIT * 2)),
+    })
+  }
+  const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId)
+    targetFromPointer(event)
+  }
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const step = event.shiftKey ? 0.15 : 0.05
+    const delta = {
+      ArrowLeft: { u: -step, v: 0 }, ArrowRight: { u: step, v: 0 },
+      ArrowUp: { u: 0, v: step }, ArrowDown: { u: 0, v: -step },
+    }[event.key]
+    if (!delta) return
+    event.preventDefault()
+    onTarget({
+      u: Math.max(-TARGET_LIMIT, Math.min(TARGET_LIMIT, target.u + delta.u)),
+      v: Math.max(-TARGET_LIMIT, Math.min(TARGET_LIMIT, target.v + delta.v)),
+    })
+  }
+
+  return (
+    <div className="pitch-target-wrap">
+      <div className="pitch-target__readout">
+        <span>LIVE TARGET</span><b>{target.u.toFixed(2)} · {target.v.toFixed(2)}</b>
+      </div>
+      <button
+        type="button"
+        className="pitch-target"
+        aria-label="Continuous pitch target. Click or drag anywhere. Use arrow keys for fine adjustment and Shift plus arrows for larger adjustment."
+        onPointerDown={handlePointerDown}
+        onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) targetFromPointer(event) }}
+        onKeyDown={handleKeyDown}
+      >
+        <span className="pitch-target__chase-label pitch-target__chase-label--top">CHASE</span>
+        <span className="pitch-target__chase-label pitch-target__chase-label--side">CHASE</span>
+        <span className="pitch-target__zone" aria-hidden />
+        <span
+          className="pitch-target__uncertainty"
+          style={{ left: `${left}%`, top: `${top}%`, width: `${uncertaintyX}%`, height: `${uncertaintyY}%` }}
+          aria-hidden
+        />
+        <svg className="pitch-target__break" viewBox="0 0 100 100" aria-hidden>
+          <line x1={left} y1={top} x2={endLeft} y2={endTop} />
+          <circle cx={endLeft} cy={endTop} r="1.5" />
+        </svg>
+        <span className="pitch-target__reticle" style={{ left: `${left}%`, top: `${top}%` }} aria-hidden />
+      </button>
+      <div className="pitch-target__legend"><span>RING · COMMAND WINDOW</span><span>VECTOR · {def.short} BREAK</span></div>
+    </div>
+  )
+}
+
+function DeliveryGesture({ onRelease }: { onRelease: ReturnType<typeof useMultiplayer.getState>['release'] }) {
+  const pointsRef = useRef<GesturePoint[]>([])
+  const [points, setPoints] = useState<GesturePoint[]>([])
+  const [dragging, setDragging] = useState(false)
+  const [feedback, setFeedback] = useState('PRESS · PULL DOWN · DRIVE UP · RELEASE')
+  const [keyboardRelease, setKeyboardRelease] = useState<{ x: number; y: number }>({ ...GESTURE_RELEASE })
+  const loaded = points.some((point) => point.y >= GESTURE_LOAD_Y)
+  const cursor = points[points.length - 1] ?? GESTURE_START
+  const trace = points.map((point) => `${point.x * 100},${point.y * 100}`).join(' ')
+
+  const begin = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const point = normalizedPointer(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
+    pointsRef.current = [point]
+    setPoints([point])
+    setDragging(true)
+    setFeedback('PULL INTO THE LOAD BAND')
+  }
+  const move = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    const point = normalizedPointer(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
+    pointsRef.current = [...pointsRef.current.slice(-79), point]
+    setPoints(pointsRef.current)
+    if (point.y >= GESTURE_LOAD_Y) setFeedback('LOADED · DRIVE UP AND RELEASE')
+  }
+  const finish = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    const point = normalizedPointer(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
+    const complete = [...pointsRef.current, point]
+    const execution = evaluatePitchGesture(complete)
+    event.currentTarget.releasePointerCapture(event.pointerId)
+    setDragging(false)
+    if (execution) onRelease(execution)
+    else {
+      setFeedback(complete.some((sample) => sample.y >= GESTURE_LOAD_Y) ? 'FINISH HIGHER · TRY AGAIN' : 'LOAD THE DELIVERY FIRST · TRY AGAIN')
+      pointsRef.current = []
+      setPoints([])
+    }
+  }
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === ' ') {
+      event.preventDefault()
+      const loadedPoints = [
+        { ...GESTURE_START, t: performance.now() },
+        { x: 0.5, y: 0.84, t: performance.now() + 1 },
+      ]
+      pointsRef.current = loadedPoints
+      setPoints(loadedPoints)
+      setFeedback('LOADED · AIM WITH ARROWS · ENTER TO RELEASE')
+      return
+    }
+    if (pointsRef.current.length < 2) return
+    const step = event.shiftKey ? 0.05 : 0.02
+    const delta = {
+      ArrowLeft: { x: -step, y: 0 }, ArrowRight: { x: step, y: 0 },
+      ArrowUp: { x: 0, y: -step }, ArrowDown: { x: 0, y: step },
+    }[event.key]
+    if (delta) {
+      event.preventDefault()
+      setKeyboardRelease((current) => ({
+        x: Math.max(0.05, Math.min(0.95, current.x + delta.x)),
+        y: Math.max(0.06, Math.min(0.4, current.y + delta.y)),
+      }))
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      const releasePoint = { ...keyboardRelease, t: performance.now() }
+      const execution = evaluatePitchGesture([...pointsRef.current, { x: 0.5, y: 0.48, t: releasePoint.t - 1 }, releasePoint])
+      if (execution) onRelease(execution)
+    }
+  }
+
+  return (
+    <div className="delivery">
+      <div className="delivery__head"><span>MANUAL DELIVERY</span><b>{loaded ? 'ARMED' : dragging ? 'LOADING' : 'READY'}</b></div>
+      <button
+        type="button"
+        className="delivery__surface"
+        aria-label="Delivery gesture. Drag down to load, then drive upward and release. Keyboard: Space to load, arrow keys to shape the release, Enter to deliver."
+        onPointerDown={begin}
+        onPointerMove={move}
+        onPointerUp={finish}
+        onPointerCancel={() => { pointsRef.current = []; setPoints([]); setDragging(false) }}
+        onKeyDown={handleKeyDown}
+      >
+        <span className="delivery__release-window" style={{ left: `${keyboardRelease.x * 100}%`, top: `${keyboardRelease.y * 100}%` }} aria-hidden />
+        <span className="delivery__load-band" aria-hidden>LOAD</span>
+        <svg className="delivery__trace" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+          <path d="M 50 62 L 50 84 L 50 16" className="delivery__guide" />
+          {trace && <polyline points={trace} />}
+        </svg>
+        <span className={`delivery__ball ${dragging ? 'delivery__ball--live' : ''}`} style={{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%` }} aria-hidden>●</span>
+      </button>
+      <div className="delivery__feedback">{feedback}</div>
+      <small>Release left/right moves the miss. A smooth drive tightens command. Keyboard: Space · arrows · Enter.</small>
+    </div>
   )
 }
 
@@ -344,12 +497,12 @@ function SeriesScreen({ snapshot }: { snapshot: RoomSnapshot }) {
   return (
     <div className="overlay mp-overlay mp-results mp-series">
       <div className="mp-results__inner">
-        <span className="start__kicker">FINAL SERIES REPORT</span>
-        <h2>{champion ? 'YOU WIN' : 'SERIES COMPLETE'}</h2>
+        <span className="start__kicker">{snapshot.difficulty === 'legend' ? 'FINAL GAME REPORT' : 'FINAL SERIES REPORT'}</span>
+        <h2>{champion ? 'YOU WIN' : snapshot.difficulty === 'legend' ? 'GAME COMPLETE' : 'SERIES COMPLETE'}</h2>
         <div className="mp-podium">
           {scores.map((score, index) => (
             <article key={score.playerId} className={`panel ${index === 0 ? 'mp-podium__winner' : ''}`}>
-              <span>{index === 0 ? 'SERIES CHAMPION' : 'RUNNER-UP'}</span>
+              <span>{index === 0 ? snapshot.difficulty === 'legend' ? 'GAME CHAMPION' : 'SERIES CHAMPION' : 'RUNNER-UP'}</span>
               <h3>{nameOf(score.playerId)}</h3>
               <b>{score.overallScore.toFixed(1)}</b>
               <div><small>PITCHING</small><strong>{score.pitchScore.toFixed(1)}</strong></div>
@@ -365,7 +518,7 @@ function SeriesScreen({ snapshot }: { snapshot: RoomSnapshot }) {
         )}
         <div className="mp-results__actions">
           <button className="btn" onClick={leave}>TITLE SCREEN</button>
-          <button className="btn btn--gold" onClick={newSeries}>NEW SERIES</button>
+          <button className="btn btn--gold" onClick={newSeries}>{snapshot.difficulty === 'legend' ? 'NEW GAME' : 'NEW SERIES'}</button>
         </div>
       </div>
     </div>
