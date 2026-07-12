@@ -138,6 +138,33 @@ describe('game store state machine', () => {
     expect(end.calls.every((c) => !c.challenged)).toBe(true)
   })
 
+  it('runs endless all-take practice pitches without a count or inning state', () => {
+    useSettings.setState({ difficulty: 'rookie', callWindow: 'auto', pitchSpeed: 'auto' })
+    useGame.getState().newGame('PRACTICE')
+    useGame.getState().startPractice()
+
+    let callsMade = 0
+    while (callsMade < 8) {
+      vi.advanceTimersByTime(50)
+      const g = useGame.getState()
+      g.tick(performance.now())
+      const after = useGame.getState()
+      if (after.phase === 'call' && after.active) {
+        expect(after.active.plan.swings).toBe(false)
+        after.makeCall(after.active.pitch.truthStrike ? 'strike' : 'ball')
+        callsMade++
+      }
+    }
+
+    const end = useGame.getState()
+    expect(end.mode).toBe('practice')
+    expect(end.phase).not.toBe('inningOver')
+    expect(end.calls).toHaveLength(8)
+    expect(end.calls.every((call) => call.correct)).toBe(true)
+    expect([end.sit.balls, end.sit.strikes, end.sit.outs]).toEqual([0, 0, 0])
+    expect(end.challengesMax).toBe(0)
+  })
+
   it('is seed-reproducible at the store level', () => {
     const run = (): string => {
       useGame.getState().newGame('REPRO')

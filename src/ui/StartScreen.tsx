@@ -118,6 +118,10 @@ export function StartScreen() {
             SOLO NINTH
           </button>
 
+          <button className="btn btn--practice" onClick={() => useGame.getState().startPractice()}>
+            PRACTICE PITCHES
+          </button>
+
           <button className="btn btn--versus" onClick={() => useMultiplayer.getState().openEntry()}>
             2-PLAYER SERIES
           </button>

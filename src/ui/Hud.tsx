@@ -80,12 +80,13 @@ function UmpireChip() {
   const calls = useGame((s) => s.calls)
   const pitches = useGame((s) => s.sit.totalPitches)
   const pitcher = useGame((s) => s.pitcher)
+  const mode = useGame((s) => s.mode)
   const correct = calls.filter((c) => c.correct).length
   const pct = calls.length ? Math.round((100 * correct) / calls.length) : null
   return (
     <div className="umpchip panel">
       <span className="umpchip__pitcher">
-        {pitcher.name.toUpperCase()} #{pitcher.number} · {pitcher.hand}HP
+        {mode === 'practice' ? 'PRACTICE' : `${pitcher.name.toUpperCase()} #${pitcher.number} · ${pitcher.hand}HP`}
       </span>
       <span className="umpchip__sep" />
       <span className="umpchip__acc">
@@ -227,14 +228,15 @@ function PauseVeil() {
 export function Hud() {
   const phase = useGame((s) => s.phase)
   const reveal = useGame((s) => s.reveal)
+  const mode = useGame((s) => s.mode)
   if (phase === 'menu' || phase === 'inningOver') return null
   return (
     <>
-      <ScoreBug />
+      {mode !== 'practice' && <ScoreBug />}
       <UmpireChip />
       <TopButtons />
-      <BatterCard />
-      <Ticker />
+      {mode !== 'practice' && <BatterCard />}
+      {mode !== 'practice' && <Ticker />}
       <Banner />
       <CallPrompt />
       {phase === 'reveal' && reveal && <ReplayCard record={reveal.record} />}

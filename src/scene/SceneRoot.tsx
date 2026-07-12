@@ -18,6 +18,7 @@ export function SceneRoot() {
   const night = useSettings((s) => s.nightGame)
   const quality = useSettings((s) => s.quality)
   const orbit = useGame((s) => s.orbit)
+  const mode = useGame((s) => s.mode)
   const batter = useGame((s) => (s.lineup.length ? s.lineup[s.sit.batterIdx] : null))
   const pitcherHand = useGame((s) => s.pitcher.hand)
   const shadows = quality !== 'low'
@@ -56,10 +57,10 @@ export function SceneRoot() {
       <Stadium night={night} />
       <Field />
       <Crowd quality={quality} night={night} />
-      <Scoreboard />
+      {mode !== 'practice' && <Scoreboard />}
 
       <Catcher />
-      {batter && <Batter key={batter.id} batter={batter} />}
+      {mode !== 'practice' && batter && <Batter key={batter.id} batter={batter} />}
       <Pitcher hand={pitcherHand} />
       <Ball />
       <ZoneGhost />
