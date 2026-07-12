@@ -148,3 +148,35 @@ describe('room worker', () => {
     expect(latest.type === 'snapshot' && latest.snapshot.players[0]?.connected).toBe(true)
   })
 })
+
+describe('solo leaderboard', () => {
+  const submit = (body: Record<string, unknown>) => worker.fetch(new Request('https://rooms.test/leaderboard', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }), env as Env)
+
+  it('ranks each browser best by score and keeps the better result', async () => {
+    const difficulty = 'legend'
+    const firstId = crypto.randomUUID()
+    const secondId = crypto.randomUUID()
+    const result = (playerId: string, name: string, score: number) => ({
+      playerId, name, difficulty, score, accuracyPct: score, weightedPct: score, totalCalls: 12, seed: 'TESTSEED',
+    })
+    expect((await submit(result(firstId, 'Blue One', 88))).status).toBe(200)
+    expect((await submit(result(secondId, 'Blue Two', 94))).status).toBe(200)
+    expect((await submit(result(firstId, 'Blue One', 70))).status).toBe(200)
+
+    const response = await worker.fetch(new Request(`https://rooms.test/leaderboard?difficulty=${difficulty}`), env as Env)
+    const body = await response.json() as { entries: Array<{ playerId: string; score: number; rank: number }> }
+    const relevant = body.entries.filter((entry) => entry.playerId === firstId || entry.playerId === secondId)
+    expect(relevant).toEqual([
+      expect.objectContaining({ playerId: secondId, score: 94 }),
+      expect.objectContaining({ playerId: firstId, score: 88 }),
+    ])
+    expect(relevant[0].rank).toBeLessThan(relevant[1].rank)
+  })
+
+  it('rejects malformed or non-qualifying results', async () => {
+    const response = await submit({ playerId: 'fake', name: '', difficulty: 'pro', score: 101, totalCalls: 0 })
+    expect(response.status).toBe(400)
+  })
+})

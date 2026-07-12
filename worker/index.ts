@@ -20,6 +20,7 @@ import { computePitchingReport, computeSeriesResult } from '../src/multiplayer/s
 
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomDurableObject>
+  LEADERBOARD: DurableObjectNamespace<LeaderboardDurableObject>
   TIMING_SCALE?: string
 }
 
@@ -65,6 +66,11 @@ const CHALLENGE_WINDOW_MS = 2_200
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
+    if (url.pathname === '/leaderboard') {
+      if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders() })
+      const id = env.LEADERBOARD.idFromName('global')
+      return env.LEADERBOARD.get(id).fetch(request)
+    }
     if (url.pathname === '/health') {
       return Response.json({ ok: true, service: 'umpire-multiplayer', protocolVersion: PROTOCOL_VERSION }, {
         headers: { 'Access-Control-Allow-Origin': '*' },
@@ -79,6 +85,79 @@ export default {
     return env.ROOMS.get(id).fetch(request)
   },
 } satisfies ExportedHandler<Env>
+
+type LeaderboardDifficulty = 'rookie' | 'pro' | 'legend'
+
+interface LeaderboardEntry {
+  playerId: string
+  name: string
+  difficulty: LeaderboardDifficulty
+  score: number
+  accuracyPct: number
+  weightedPct: number
+  totalCalls: number
+  playedAt: number
+}
+
+const LEADERBOARD_LIMIT = 100
+const leaderboardDifficulties = new Set<LeaderboardDifficulty>(['rookie', 'pro', 'legend'])
+
+function corsHeaders(): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  }
+}
+
+export class LeaderboardDurableObject extends DurableObject<Env> {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    if (request.method === 'GET') {
+      const difficulty = url.searchParams.get('difficulty')
+      if (!leaderboardDifficulties.has(difficulty as LeaderboardDifficulty)) return this.json({ error: 'Invalid difficulty.' }, 400)
+      return this.ranking(difficulty as LeaderboardDifficulty)
+    }
+    if (request.method !== 'POST') return this.json({ error: 'Method not allowed.' }, 405)
+
+    let body: Record<string, unknown>
+    try { body = await request.json() as Record<string, unknown> } catch { return this.json({ error: 'Invalid JSON.' }, 400) }
+    const difficulty = body.difficulty as LeaderboardDifficulty
+    const playerId = typeof body.playerId === 'string' ? body.playerId : ''
+    const name = typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ') : ''
+    const score = Number(body.score)
+    const accuracyPct = Number(body.accuracyPct)
+    const weightedPct = Number(body.weightedPct)
+    const totalCalls = Number(body.totalCalls)
+    if (!leaderboardDifficulties.has(difficulty) || !/^[a-f\d-]{20,64}$/i.test(playerId) || name.length < 1 || name.length > 20
+      || !Number.isFinite(score) || score < 0 || score > 100 || !Number.isFinite(accuracyPct) || accuracyPct < 0 || accuracyPct > 100
+      || !Number.isFinite(weightedPct) || weightedPct < 0 || weightedPct > 100 || !Number.isInteger(totalCalls) || totalCalls < 1 || totalCalls > 250) {
+      return this.json({ error: 'Result did not pass leaderboard validation.' }, 400)
+    }
+
+    const key = `${difficulty}:${playerId}`
+    const previous = await this.ctx.storage.get<LeaderboardEntry>(key)
+    if (!previous || score > previous.score) {
+      await this.ctx.storage.put(key, { playerId, name, difficulty, score, accuracyPct, weightedPct, totalCalls, playedAt: Date.now() } satisfies LeaderboardEntry)
+    } else if (name !== previous.name) {
+      await this.ctx.storage.put(key, { ...previous, name })
+    }
+    return this.ranking(difficulty)
+  }
+
+  private async ranking(difficulty: LeaderboardDifficulty): Promise<Response> {
+    const stored = await this.ctx.storage.list<LeaderboardEntry>({ prefix: `${difficulty}:` })
+    const entries = [...stored.values()]
+      .sort((a, b) => b.score - a.score || b.weightedPct - a.weightedPct || b.accuracyPct - a.accuracyPct || a.playedAt - b.playedAt)
+      .slice(0, LEADERBOARD_LIMIT)
+      .map((entry, index) => ({ ...entry, rank: index + 1 }))
+    return this.json({ entries, updatedAt: Date.now() })
+  }
+
+  private json(body: unknown, status = 200): Response {
+    return Response.json(body, { status, headers: corsHeaders() })
+  }
+}
 
 export class RoomDurableObject extends DurableObject<Env> {
   private timingScale: number
