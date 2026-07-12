@@ -8,6 +8,7 @@ import {
   PROTOCOL_VERSION, ROOM_CODE_RE, roomCode,
   type ClientMessage, type MultiplayerRole, type PitchExecution, type RoomSnapshot, type ServerMessage,
 } from './protocol'
+import { leaderboardPlayerId } from '../leaderboard/api'
 
 type WithoutProtocol<T> = T extends unknown ? Omit<T, 'protocolVersion'> : never
 type ClientPayload = WithoutProtocol<ClientMessage>
@@ -129,7 +130,7 @@ function connectToRoom(
   ws.addEventListener('open', () => {
     if (generation !== connectionGeneration) return
     reconnectAttempt = 0
-    sendRaw(ws, { type: 'join', roomCode: code, playerToken: token, name })
+    sendRaw(ws, { type: 'join', roomCode: code, playerToken: token, leaderboardId: leaderboardPlayerId(), name })
   })
   ws.addEventListener('message', (event) => {
     if (generation !== connectionGeneration) return

@@ -145,8 +145,8 @@ function LobbyScreen({
         </div>
 
         <section className="mp-lobby__rules panel">
-          <div><b>{snapshot.difficulty === 'legend' ? 'MIRRORED 3-INNING GAMES' : 'MIRRORED NINTHS'}</b><span>{snapshot.difficulty === 'legend' ? 'Legend starts in the 7th and plays through the 9th.' : 'Same score, runners, lineup, and closer.'}</span></div>
-          <div><b>COIN-FLIP ROLES</b><span>One pitches. One calls. Then you swap.</span></div>
+          <div><b>{snapshot.difficulty === 'legend' ? 'TOP 8TH THROUGH THE 9TH' : 'MIRRORED NINTHS'}</b><span>{snapshot.difficulty === 'legend' ? 'One complete game with four half-innings.' : 'Same score, runners, lineup, and closer.'}</span></div>
+          <div><b>COIN-FLIP ROLES</b><span>{snapshot.difficulty === 'legend' ? 'Pitcher and umpire switch every three outs.' : 'One pitches. One calls. Then you swap.'}</span></div>
           <div><b>BALANCED SERIES</b><span>Pitching and umpiring count equally.</span></div>
         </section>
 
@@ -187,7 +187,7 @@ function MultiplayerHud({ snapshot }: { snapshot: RoomSnapshot }) {
   const opponent = snapshot.players.find((player) => player && player.id !== playerId)
   return (
     <aside className={`mp-rolehud panel mp-rolehud--${role ?? 'waiting'}`}>
-      <span className="mp-rolehud__round">ROUND {snapshot.round} / 2</span>
+      <span className="mp-rolehud__round">{snapshot.difficulty === 'legend' ? `${snapshot.sit.half.toUpperCase()} ${snapshot.sit.inning} · SIDE ${Math.min(4, Math.floor(snapshot.sit.totalOuts / 3) + 1)} / 4` : `ROUND ${snapshot.round} / 2`}</span>
       <strong>{role === 'pitcher' ? 'ON THE MOUND' : role === 'umpire' ? 'BEHIND THE PLATE' : 'WAITING'}</strong>
       <span>{opponent?.name ?? 'Opponent'} · {connection === 'connected' ? 'LIVE' : connection.toUpperCase()} {latency === null ? '' : `· ${latency}ms`}</span>
     </aside>
@@ -497,12 +497,12 @@ function SeriesScreen({ snapshot }: { snapshot: RoomSnapshot }) {
   return (
     <div className="overlay mp-overlay mp-results mp-series">
       <div className="mp-results__inner">
-        <span className="start__kicker">FINAL SERIES REPORT</span>
-        <h2>{champion ? 'YOU WIN' : 'SERIES COMPLETE'}</h2>
+        <span className="start__kicker">{snapshot.difficulty === 'legend' ? 'FINAL GAME REPORT' : 'FINAL SERIES REPORT'}</span>
+        <h2>{champion ? 'YOU WIN' : snapshot.difficulty === 'legend' ? 'GAME COMPLETE' : 'SERIES COMPLETE'}</h2>
         <div className="mp-podium">
           {scores.map((score, index) => (
             <article key={score.playerId} className={`panel ${index === 0 ? 'mp-podium__winner' : ''}`}>
-              <span>{index === 0 ? 'SERIES CHAMPION' : 'RUNNER-UP'}</span>
+              <span>{index === 0 ? snapshot.difficulty === 'legend' ? 'GAME CHAMPION' : 'SERIES CHAMPION' : 'RUNNER-UP'}</span>
               <h3>{nameOf(score.playerId)}</h3>
               <b>{score.overallScore.toFixed(1)}</b>
               <div><small>PITCHING</small><strong>{score.pitchScore.toFixed(1)}</strong></div>
@@ -518,7 +518,7 @@ function SeriesScreen({ snapshot }: { snapshot: RoomSnapshot }) {
         )}
         <div className="mp-results__actions">
           <button className="btn" onClick={leave}>TITLE SCREEN</button>
-          <button className="btn btn--gold" onClick={newSeries}>NEW SERIES</button>
+          <button className="btn btn--gold" onClick={newSeries}>{snapshot.difficulty === 'legend' ? 'NEW GAME' : 'NEW SERIES'}</button>
         </div>
       </div>
     </div>

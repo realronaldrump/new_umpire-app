@@ -5,7 +5,7 @@ describe('multiplayer protocol', () => {
   it('accepts valid messages and rejects malformed or out-of-range actions', () => {
     expect(parseClientMessage({
       protocolVersion: PROTOCOL_VERSION, type: 'join', roomCode: 'ABC234',
-      playerToken: '12345678', name: 'Blue',
+      playerToken: '12345678', leaderboardId: crypto.randomUUID(), name: 'Blue',
     })?.type).toBe('join')
     expect(parseClientMessage({ protocolVersion: PROTOCOL_VERSION, type: 'join', roomCode: 'OOPS!!', playerToken: '12345678', name: 'Blue' })).toBeNull()
     expect(parseClientMessage({ protocolVersion: PROTOCOL_VERSION, type: 'release', execution: { quality: 1.1, miss: { u: 0, v: 0 } } })).toBeNull()

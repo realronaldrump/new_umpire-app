@@ -10,6 +10,7 @@ export interface Bases {
 
 export interface Situation {
   inning: number
+  half: 'top' | 'bottom'
   awayScore: number
   homeScore: number
   outs: number
@@ -57,7 +58,7 @@ export function createScenario(rng: RNG, inning = 9): Scenario {
   }
 
   const situation: Situation = {
-    inning, awayScore, homeScore, outs, totalOuts: outs,
+    inning, half: 'bottom', awayScore, homeScore, outs, totalOuts: outs,
     balls: 0, strikes: 0,
     bases,
     batterIdx: rng.int(9),
@@ -80,7 +81,7 @@ export function createScenario(rng: RNG, inning = 9): Scenario {
 }
 
 function checkWalkOff(sit: Situation, events: PlayEvent[]): void {
-  if (sit.inning >= 9 && sit.homeScore > sit.awayScore) {
+  if (sit.half === 'bottom' && sit.inning >= 9 && sit.homeScore > sit.awayScore) {
     sit.over = true
     sit.walkOff = true
     events.push({ kind: 'end', text: `WALK-OFF! The ${HOME_TEAM.name} take it!`, runs: 0 })
@@ -89,13 +90,17 @@ function checkWalkOff(sit: Situation, events: PlayEvent[]): void {
 
 function checkThreeOuts(sit: Situation, events: PlayEvent[]): void {
   if (sit.outs >= 3) {
-    if (sit.inning < 9) {
-      sit.inning++
+    if (sit.half === 'top' || sit.inning < 9) {
+      if (sit.half === 'top') sit.half = 'bottom'
+      else {
+        sit.inning++
+        sit.half = 'top'
+      }
       sit.outs = 0
       sit.balls = 0
       sit.strikes = 0
       sit.bases = { first: false, second: false, third: false }
-      events.push({ kind: 'end', text: `Three away — on to the ${ordinal(sit.inning)}.`, runs: 0 })
+      events.push({ kind: 'end', text: `Three away — on to the ${sit.half} of the ${ordinal(sit.inning)}.`, runs: 0 })
       return
     }
     sit.over = true
@@ -118,7 +123,8 @@ function ordinal(inning: number): string {
 
 function scoreRuns(sit: Situation, runs: number, events: PlayEvent[], why: string): void {
   if (runs <= 0) return
-  sit.homeScore += runs
+  if (sit.half === 'top') sit.awayScore += runs
+  else sit.homeScore += runs
   events.push({ kind: 'run', text: `${runs === 1 ? 'A run' : `${runs} runs`} score${runs === 1 ? 's' : ''} on the ${why}!`, runs })
 }
 

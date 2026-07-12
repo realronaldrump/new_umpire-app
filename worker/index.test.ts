@@ -36,7 +36,7 @@ function waitFor(socket: WebSocket, type: ServerMessage['type']): Promise<Server
 }
 
 function join(socket: WebSocket, roomCode: string, token: string, name: string): void {
-  socket.send(JSON.stringify({ protocolVersion: PROTOCOL_VERSION, type: 'join', roomCode, playerToken: token, name }))
+  socket.send(JSON.stringify({ protocolVersion: PROTOCOL_VERSION, type: 'join', roomCode, playerToken: token, leaderboardId: crypto.randomUUID(), name }))
 }
 
 function action(socket: WebSocket, message: Record<string, unknown>): void {
@@ -129,6 +129,34 @@ describe('room worker', () => {
     }
   })
 
+  it('starts Legend at the top of the eighth with alternating three-out roles', async () => {
+    const room = 'LEG234'
+    const first = await connect(room)
+    const second = await connect(room)
+    const firstWelcome = waitFor(first, 'welcome')
+    join(first, room, 'legend-first', 'First')
+    const firstPlayer = await firstWelcome
+    if (firstPlayer.type !== 'welcome') throw new Error('Expected first welcome')
+    const secondWelcome = waitFor(second, 'welcome')
+    join(second, room, 'legend-second', 'Second')
+    await secondWelcome
+
+    const configured = waitFor(first, 'snapshot')
+    action(first, { type: 'configure', difficulty: 'legend' })
+    await configured
+    const firstReady = waitFor(first, 'phaseChanged')
+    action(first, { type: 'ready' })
+    await firstReady
+    const started = waitFor(second, 'phaseChanged')
+    action(second, { type: 'ready' })
+    const message = await started
+    if (message.type !== 'phaseChanged') throw new Error('Expected Legend game start')
+
+    expect(message.snapshot.sit).toMatchObject({ inning: 8, half: 'top', outs: 0, totalOuts: 0 })
+    expect(message.snapshot.pitcherId).not.toBe(message.snapshot.umpireId)
+    expect(message.snapshot.firstPitcherId).toBe(message.snapshot.pitcherId)
+  })
+
   it('reclaims an existing seat without the replaced socket marking it offline', async () => {
     const room = 'RCN234'
     const original = await connect(room)
@@ -178,5 +206,36 @@ describe('solo leaderboard', () => {
   it('rejects malformed or non-qualifying results', async () => {
     const response = await submit({ playerId: 'fake', name: '', difficulty: 'pro', score: 101, totalCalls: 0 })
     expect(response.status).toBe(400)
+  })
+})
+
+describe('head-to-head leaderboard', () => {
+  it('tracks wins, losses, draws and ignores a duplicate room result', async () => {
+    const firstId = crypto.randomUUID()
+    const secondId = crypto.randomUUID()
+    const leaderboard = env.LEADERBOARD.get(env.LEADERBOARD.idFromName('global'))
+    const submit = (matchId: string, winnerIds: string[]) => leaderboard.fetch(new Request('https://leaderboard.test/head-to-head-result', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        mode: 'head-to-head', matchId, winnerIds,
+        players: [
+          { playerId: firstId, name: 'First Blue', score: 91.5 },
+          { playerId: secondId, name: 'Second Blue', score: 84 },
+        ],
+      }),
+    }), env as Env)
+
+    expect((await submit('H2H234', [firstId])).status).toBe(200)
+    expect((await submit('H2H234', [firstId])).status).toBe(200)
+    expect((await submit('DRAW23', [firstId, secondId])).status).toBe(200)
+
+    const spoofed = await worker.fetch(new Request('https://rooms.test/leaderboard', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'head-to-head' }),
+    }), env as Env)
+    expect(spoofed.status).toBe(403)
+
+    const response = await worker.fetch(new Request('https://rooms.test/leaderboard?mode=head-to-head'), env as Env)
+    const body = await response.json() as { entries: Array<{ playerId: string; wins: number; losses: number; draws: number; seriesPlayed: number }> }
+    expect(body.entries.find((entry) => entry.playerId === firstId)).toMatchObject({ wins: 1, losses: 0, draws: 1, seriesPlayed: 2 })
+    expect(body.entries.find((entry) => entry.playerId === secondId)).toMatchObject({ wins: 0, losses: 1, draws: 1, seriesPlayed: 2 })
   })
 })

@@ -39,7 +39,7 @@ export function Scoreboard() {
       ctx.fillText(`${HOME_TEAM.name.toUpperCase()} PARK`, 48, 62)
       ctx.textAlign = 'right'
       ctx.font = '600 34px "Archivo", sans-serif'
-      ctx.fillText(`BOT ${s.sit.inning}`, W - 48, 62)
+      ctx.fillText(`${s.sit.half === 'top' ? 'TOP' : 'BOT'} ${s.sit.inning}`, W - 48, 62)
 
       const row = (y: number, abbr: string, color: string, score: number) => {
         ctx.textAlign = 'left'

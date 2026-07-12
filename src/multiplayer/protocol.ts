@@ -6,7 +6,7 @@ import type { PitchTypeKey } from '../game/pitchTypes'
 import type { CallRecord, ReportCard } from '../game/report'
 import type { BatterDef, PitcherDef } from '../game/roster'
 
-export const PROTOCOL_VERSION = 5
+export const PROTOCOL_VERSION = 7
 export const ROOM_CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/
 export const TARGET_LIMIT = 1.5
 export const EXECUTION_MISS_LIMIT = 0.7
@@ -180,7 +180,7 @@ export interface RoomSnapshot {
 interface ClientBase { protocolVersion: typeof PROTOCOL_VERSION }
 
 export type ClientMessage =
-  | (ClientBase & { type: 'join'; roomCode: string; playerToken: string; name: string })
+  | (ClientBase & { type: 'join'; roomCode: string; playerToken: string; leaderboardId: string; name: string })
   | (ClientBase & { type: 'configure'; difficulty: Difficulty; name?: string })
   | (ClientBase & { type: 'ready' })
   | (ClientBase & { type: 'pitchIntent'; intent: PitchIntent })
@@ -224,6 +224,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case 'join':
       return typeof msg.roomCode === 'string' && ROOM_CODE_RE.test(msg.roomCode) &&
         typeof msg.playerToken === 'string' && msg.playerToken.length >= 8 && msg.playerToken.length <= 100 &&
+        typeof msg.leaderboardId === 'string' && /^[a-f\d-]{20,64}$/i.test(msg.leaderboardId) &&
         typeof msg.name === 'string' && msg.name.trim().length >= 1 && msg.name.trim().length <= 20
         ? msg as unknown as ClientMessage : null
     case 'configure':

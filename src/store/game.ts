@@ -594,7 +594,7 @@ export const useGame = create<GameState>()((set, get) => {
     seedText: '',
     intro: '',
     sit: {
-      inning: 9, awayScore: 0, homeScore: 0, outs: 0, totalOuts: 0, balls: 0, strikes: 0,
+      inning: 9, half: 'bottom', awayScore: 0, homeScore: 0, outs: 0, totalOuts: 0, balls: 0, strikes: 0,
       bases: { first: false, second: false, third: false },
       batterIdx: 0, pitchOfAtBat: 0, totalPitches: 0, over: false, walkOff: false,
     },
