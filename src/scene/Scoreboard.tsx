@@ -39,7 +39,7 @@ export function Scoreboard() {
       ctx.fillText(`${HOME_TEAM.name.toUpperCase()} PARK`, 48, 62)
       ctx.textAlign = 'right'
       ctx.font = '600 34px "Archivo", sans-serif'
-      ctx.fillText('BOT 9', W - 48, 62)
+      ctx.fillText(`BOT ${s.sit.inning}`, W - 48, 62)
 
       const row = (y: number, abbr: string, color: string, score: number) => {
         ctx.textAlign = 'left'
@@ -126,18 +126,31 @@ export function Scoreboard() {
     return () => tex?.dispose()
   }, [])
 
+  // Keep the board inside the 385-foot wall; beyond 400 feet it intersects the lower bowl.
   return (
-    <group position={S(0, 452, 52)} rotation={[0, 0, 0]}>
+    <group position={S(0, 380, 52)} rotation={[0, 0, 0]}>
       <mesh>
-        <boxGeometry args={[78, 36, 3]} />
+        <boxGeometry args={[114, 52, 3]} />
         <meshStandardMaterial color="#0a0e15" roughness={0.9} />
       </mesh>
-      <mesh position={[0, 0, 1.6]}>
-        <planeGeometry args={[74, 32]} />
-        <meshBasicMaterial map={texRef.current} toneMapped={false} />
+      {/*
+        Keep the display comfortably in front of the cabinet. At center-field
+        distance, the old 0.1-unit separation was smaller than the camera's
+        effective depth precision and the cabinet won the depth test, making
+        the scoreboard flicker or disappear.
+      */}
+      <mesh position={[0, 0, 4]} renderOrder={1}>
+        <planeGeometry args={[108, 47]} />
+        <meshBasicMaterial
+          map={texRef.current}
+          toneMapped={false}
+          polygonOffset
+          polygonOffsetFactor={-2}
+          polygonOffsetUnits={-2}
+        />
       </mesh>
       {/* Support pylons */}
-      {[-26, 26].map((x) => (
+      {[-38, 38].map((x) => (
         <mesh key={x} position={[x, -28, 0]}>
           <boxGeometry args={[3, 24, 2.5]} />
           <meshStandardMaterial color="#161c26" roughness={1} />

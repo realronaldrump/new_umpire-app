@@ -6,9 +6,10 @@ import type { PitchTypeKey } from '../game/pitchTypes'
 import type { CallRecord, ReportCard } from '../game/report'
 import type { BatterDef, PitcherDef } from '../game/roster'
 
-export const PROTOCOL_VERSION = 2
+export const PROTOCOL_VERSION = 5
 export const ROOM_CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/
-export const TARGET_VALUES = [-1.5, -0.75, 0, 0.75, 1.5] as const
+export const TARGET_LIMIT = 1.5
+export const EXECUTION_MISS_LIMIT = 0.7
 
 export type MultiplayerRole = 'pitcher' | 'umpire'
 export type RoomStatus = 'lobby' | 'playing' | 'betweenRounds' | 'seriesComplete' | 'disconnectPaused' | 'abandoned'
@@ -91,7 +92,13 @@ export interface AbsChallengeState {
 
 export interface PitchIntent {
   typeKey: PitchTypeKey
-  targetIndex: number
+  target: { u: number; v: number }
+}
+
+export interface PitchExecution {
+  quality: number
+  /** Gesture-driven miss in normalized strike-zone units. */
+  miss: { u: number; v: number }
 }
 
 export interface PitchingReport {
@@ -159,6 +166,8 @@ export interface RoomSnapshot {
   pendingAtBatOver: boolean
   pitchIntent: PitchIntent | null
   commandQuality: number | null
+  /** Specialty pitches already spent against the current batter. */
+  specialPitchesUsed: Array<'knuckleball' | 'eephus'>
   pitcherChallengesLeft: number
   pitcherChallengesMax: number
   pendingCall: 'ball' | null
@@ -175,7 +184,7 @@ export type ClientMessage =
   | (ClientBase & { type: 'configure'; difficulty: Difficulty; name?: string })
   | (ClientBase & { type: 'ready' })
   | (ClientBase & { type: 'pitchIntent'; intent: PitchIntent })
-  | (ClientBase & { type: 'release'; commandQuality: number })
+  | (ClientBase & { type: 'release'; execution: PitchExecution })
   | (ClientBase & { type: 'umpCall'; call: 'ball' | 'strike' })
   | (ClientBase & { type: 'pitcherChallenge' })
   | (ClientBase & { type: 'resumeReady' })
@@ -207,11 +216,6 @@ export function roomCode(): string {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
 }
 
-export function targetAt(index: number): { u: number; v: number } {
-  const safe = Math.max(0, Math.min(24, Math.trunc(index)))
-  return { u: TARGET_VALUES[safe % 5], v: TARGET_VALUES[4 - Math.floor(safe / 5)] }
-}
-
 export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (!raw || typeof raw !== 'object') return null
   const msg = raw as Record<string, unknown>
@@ -230,13 +234,17 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return msg as unknown as ClientMessage
     case 'pitchIntent': {
       const intent = msg.intent as Record<string, unknown> | undefined
-      return intent && typeof intent.typeKey === 'string' && Number.isInteger(intent.targetIndex) &&
-        Number(intent.targetIndex) >= 0 && Number(intent.targetIndex) <= 24
+      const target = intent?.target as Record<string, unknown> | undefined
+      return intent && typeof intent.typeKey === 'string' && finiteWithin(target?.u, TARGET_LIMIT) && finiteWithin(target?.v, TARGET_LIMIT)
         ? msg as unknown as ClientMessage : null
     }
-    case 'release':
-      return typeof msg.commandQuality === 'number' && Number.isFinite(msg.commandQuality) &&
-        msg.commandQuality >= 0 && msg.commandQuality <= 1 ? msg as unknown as ClientMessage : null
+    case 'release': {
+      const execution = msg.execution as Record<string, unknown> | undefined
+      const miss = execution?.miss as Record<string, unknown> | undefined
+      return finiteWithin(execution?.quality, 1, 0) &&
+        finiteWithin(miss?.u, EXECUTION_MISS_LIMIT) && finiteWithin(miss?.v, EXECUTION_MISS_LIMIT)
+        ? msg as unknown as ClientMessage : null
+    }
     case 'umpCall':
       return msg.call === 'ball' || msg.call === 'strike' ? msg as unknown as ClientMessage : null
     case 'ping':
@@ -244,4 +252,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     default:
       return null
   }
+}
+
+function finiteWithin(value: unknown, max: number, min = -max): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 }

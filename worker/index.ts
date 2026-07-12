@@ -11,8 +11,8 @@ import { clamp, createRng } from '../src/game/rng'
 import { generateCloser, generateLineup } from '../src/game/roster'
 import { describeTake, zoneFor } from '../src/game/strikeZone'
 import {
-  PROTOCOL_VERSION, ROOM_CODE_RE, parseClientMessage, targetAt,
-  type ClientMessage, type MultiplayerPhase, type PitchIntent, type PlayerPublic,
+  PROTOCOL_VERSION, ROOM_CODE_RE, parseClientMessage,
+  type ClientMessage, type MultiplayerPhase, type PitchExecution, type PitchIntent, type PlayerPublic,
   type RemoteActivePitch, type RemoteBanner, type RemoteTickerItem,
   type RoomSnapshot, type RoundSummary, type ServerMessage,
 } from '../src/multiplayer/protocol'
@@ -55,7 +55,9 @@ const RECONNECT_MS = 90_000
 const HEARTBEAT_TIMEOUT_MS = 25_000
 const CALL_GRACE_MS = 150
 const PITCH_SELECT_MS = 12_000
-const COMMAND_MS = 1_600
+// The delivery is a deliberate load-and-drive gesture, not a reaction timer.
+// This is an anti-stall ceiling; a completed gesture advances immediately.
+const COMMAND_MS = 6_000
 const ROUND_INTRO_MS = 1_800
 const PRE_PITCH_MS = 900
 const CHALLENGE_WINDOW_MS = 2_200
@@ -148,7 +150,7 @@ export class RoomDurableObject extends DurableObject<Env> {
         await this.handlePitchIntent(ws, state, player, message.intent)
         break
       case 'release':
-        await this.handleRelease(ws, state, player, message.commandQuality)
+        await this.handleRelease(ws, state, player, message.execution)
         break
       case 'umpCall':
         await this.handleUmpCall(ws, state, player, message.call)
@@ -286,19 +288,24 @@ export class RoomDurableObject extends DurableObject<Env> {
     if (state.status !== 'playing' || state.phase !== 'pitchSelect' || state.pitcherId !== player.id) {
       return this.sendError(ws, state, 'NOT_PITCHER', 'Only the active pitcher can choose a pitch.')
     }
-    if (!state.pitcher.arsenal.some(([key]) => key === intent.typeKey)) {
+    const specialty = intent.typeKey === 'knuckleball' || intent.typeKey === 'eephus' ? intent.typeKey : null
+    if (!specialty && !state.pitcher.arsenal.some(([key]) => key === intent.typeKey)) {
       return this.sendError(ws, state, 'BAD_PITCH', 'That pitch is not in this closer’s arsenal.')
     }
+    if (specialty && state.specialPitchesUsed.includes(specialty)) {
+      return this.sendError(ws, state, 'SPECIAL_SPENT', 'That specialty pitch has already been used against this batter.')
+    }
+    if (specialty) state.specialPitchesUsed.push(specialty)
     state.pitchIntent = intent
     this.enter(state, 'command', COMMAND_MS)
     await this.commit(state, 'phaseChanged')
   }
 
-  private async handleRelease(ws: WebSocket, state: StoredRoom, player: InternalPlayer, quality: number): Promise<void> {
+  private async handleRelease(ws: WebSocket, state: StoredRoom, player: InternalPlayer, execution: PitchExecution): Promise<void> {
     if (state.status !== 'playing' || state.phase !== 'command' || state.pitcherId !== player.id || !state.pitchIntent) {
       return this.sendError(ws, state, 'BAD_RELEASE', 'There is no delivery to release.')
     }
-    this.preparePitch(state, clamp(quality, 0, 1))
+    this.preparePitch(state, execution)
     await this.commit(state, 'pitchPrepared')
   }
 
@@ -361,6 +368,16 @@ export class RoomDurableObject extends DurableObject<Env> {
     state.pitcherId = first.id
     state.umpireId = second.id
     state.round = 1
+    const startInning = state.difficulty === 'legend' ? 7 : 9
+    state.initialSituation.inning = startInning
+    if (state.difficulty === 'legend') {
+      state.initialSituation.outs = 0
+      state.initialSituation.balls = 0
+      state.initialSituation.strikes = 0
+      state.initialSituation.bases = { first: false, second: false, third: false }
+      state.intro = 'Three innings. Clean slate to start the 7th.'
+    }
+    state.initialSituation.totalOuts = state.initialSituation.outs
     this.resetRound(state)
   }
 
@@ -390,6 +407,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     state.pitchIntent = null
     state.commandQuality = null
     state.commandQualities = []
+    state.specialPitchesUsed = []
     state.pitcherChallengesLeft = ABS_CHALLENGES_PER_SIDE
     state.pitcherChallengesMax = ABS_CHALLENGES_PER_SIDE
     state.pendingCall = null
@@ -404,11 +422,11 @@ export class RoomDurableObject extends DurableObject<Env> {
         this.openPitchSelection(state)
         break
       case 'pitchSelect':
-        state.pitchIntent = { typeKey: state.pitcher.arsenal[0][0], targetIndex: 12 }
-        this.preparePitch(state, 0.25)
+        state.pitchIntent = { typeKey: state.pitcher.arsenal[0][0], target: { u: 0, v: 0 } }
+        this.preparePitch(state, { quality: 0.25, miss: { u: 0, v: -0.2 } })
         break
       case 'command':
-        this.preparePitch(state, 0.25)
+        this.preparePitch(state, { quality: 0.25, miss: { u: 0, v: -0.2 } })
         break
       case 'prePitch':
         this.enter(state, 'windup', TIMING.windupMs)
@@ -465,13 +483,15 @@ export class RoomDurableObject extends DurableObject<Env> {
     this.enter(state, 'pitchSelect', PITCH_SELECT_MS)
   }
 
-  private preparePitch(state: StoredRoom, commandQuality: number): void {
-    const intent = state.pitchIntent ?? { typeKey: state.pitcher.arsenal[0][0], targetIndex: 12 }
-    const pitchSeed = `${state.seedText}:round:${state.round}:pitch:${state.sit.totalPitches}:${intent.typeKey}:${intent.targetIndex}`
+  private preparePitch(state: StoredRoom, execution: PitchExecution): void {
+    const intent = state.pitchIntent ?? { typeKey: state.pitcher.arsenal[0][0], target: { u: 0, v: 0 } }
+    const commandQuality = clamp(execution.quality, 0, 1)
+    const targetKey = `${intent.target.u.toFixed(4)},${intent.target.v.toFixed(4)}`
+    const pitchSeed = `${state.seedText}:round:${state.round}:pitch:${state.sit.totalPitches}:${intent.typeKey}:${targetKey}`
     const batter = state.lineup[state.sit.batterIdx]
     const pitch = generatePitch(createRng(`${pitchSeed}:physics`), state.pitcher, batter, {
       balls: state.sit.balls, strikes: state.sit.strikes, borderlineBias: 0,
-      player: { typeKey: intent.typeKey, target: targetAt(intent.targetIndex), commandQuality },
+      player: { typeKey: intent.typeKey, target: intent.target, commandQuality, executionMiss: execution.miss },
     })
     const plan = decideSwing(createRng(`${pitchSeed}:swing`), batter, pitch, state.sit)
     const outcome = plan.swings ? resolveSwing(createRng(`${pitchSeed}:outcome`), batter, pitch, state.sit) : null
@@ -662,7 +682,10 @@ export class RoomDurableObject extends DurableObject<Env> {
 
   private afterResolution(state: StoredRoom): void {
     if (state.sit.over) return this.completeRound(state)
-    if (state.pendingAtBatOver) nextBatter(state.sit)
+    if (state.pendingAtBatOver) {
+      nextBatter(state.sit)
+      state.specialPitchesUsed = []
+    }
     state.pendingAtBatOver = false
     this.openPitchSelection(state)
   }
@@ -675,8 +698,9 @@ export class RoomDurableObject extends DurableObject<Env> {
       umpireId: state.umpireId,
       finalSituation: structuredClone(state.sit),
       pitching: computePitchingReport({
-        startOuts: state.initialSituation.outs,
-        finalOuts: state.sit.outs,
+        startOuts: state.initialSituation.totalOuts,
+        finalOuts: state.sit.totalOuts,
+        outsRequired: (9 - state.initialSituation.inning) * 3 + (3 - state.initialSituation.outs),
         runsAllowed: Math.max(0, state.sit.homeScore - state.initialHomeScore),
         pitchesThrown: state.sit.totalPitches - state.initialTotalPitches,
         commandQualities: state.commandQualities,
@@ -741,6 +765,22 @@ export class RoomDurableObject extends DurableObject<Env> {
       existing.pitcherChallengesLeft ??= existing.pitcherChallengesMax
       existing.pendingCall ??= null
       existing.absChallenge ??= null
+      existing.sit.inning ??= 9
+      existing.sit.totalOuts ??= existing.sit.outs
+      existing.initialSituation.inning ??= 9
+      existing.initialSituation.totalOuts ??= existing.initialSituation.outs
+      existing.specialPitchesUsed ??= []
+      // Protocol v2 rooms stored a five-by-five target index. Preserve active
+      // rooms across the v3 continuous-target rollout.
+      const legacyIntent = existing.pitchIntent as (PitchIntent & { targetIndex?: number }) | null
+      if (legacyIntent && !legacyIntent.target) {
+        const values = [-1.5, -0.75, 0, 0.75, 1.5]
+        const index = Math.max(0, Math.min(24, Math.trunc(legacyIntent.targetIndex ?? 12)))
+        existing.pitchIntent = {
+          typeKey: legacyIntent.typeKey,
+          target: { u: values[index % 5], v: values[4 - Math.floor(index / 5)] },
+        }
+      }
       return existing
     }
     const rng = createRng(`multiplayer:${roomCode}`)
@@ -752,7 +792,7 @@ export class RoomDurableObject extends DurableObject<Env> {
       players: [null, null], pitcherId: null, umpireId: null, intro: scenario.intro,
       seedText: roomCode, sit: structuredClone(scenario.situation), lineup: generateLineup(rng), pitcher: generateCloser(rng),
       active: null, reveal: null, banner: null, ticker: [], calls: [], callDeadline: null,
-      pendingAtBatOver: false, pitchIntent: null, commandQuality: null, roundSummaries: [],
+      pendingAtBatOver: false, pitchIntent: null, commandQuality: null, specialPitchesUsed: [], roundSummaries: [],
       pitcherChallengesLeft: ABS_CHALLENGES_PER_SIDE, pitcherChallengesMax: ABS_CHALLENGES_PER_SIDE,
       pendingCall: null, absChallenge: null,
       seriesResult: null, disconnectDeadline: null, revision: 0,

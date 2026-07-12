@@ -7,8 +7,9 @@ export function computePitchingReport(input: {
   runsAllowed: number
   pitchesThrown: number
   commandQualities: number[]
+  outsRequired?: number
 }): PitchingReport {
-  const outsRequired = Math.max(1, 3 - input.startOuts)
+  const outsRequired = input.outsRequired ?? Math.max(1, 3 - input.startOuts)
   const outsRecorded = clamp(input.finalOuts - input.startOuts, 0, outsRequired)
   const averageCommand = input.commandQualities.length
     ? input.commandQualities.reduce((sum, value) => sum + value, 0) / input.commandQualities.length

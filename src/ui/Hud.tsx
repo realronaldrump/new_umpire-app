@@ -54,7 +54,7 @@ function ScoreBug() {
         </div>
       </div>
       <div className="scorebug__state">
-        <span className="scorebug__inning">▼ 9</span>
+        <span className="scorebug__inning">▼ {sit.inning}</span>
         <BasesDiamond />
         <div className="scorebug__counts">
           <span className="countline"><em>B</em><Dots n={sit.balls} of={3} color="var(--green)" /></span>

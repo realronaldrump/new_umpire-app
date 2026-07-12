@@ -9,9 +9,11 @@ export interface Bases {
 }
 
 export interface Situation {
+  inning: number
   awayScore: number
   homeScore: number
   outs: number
+  totalOuts: number
   balls: number
   strikes: number
   bases: Bases
@@ -37,7 +39,7 @@ export interface Scenario {
 
 const runnersOn = (b: Bases): number => (b.first ? 1 : 0) + (b.second ? 1 : 0) + (b.third ? 1 : 0)
 
-export function createScenario(rng: RNG): Scenario {
+export function createScenario(rng: RNG, inning = 9): Scenario {
   const deficit = rng.weighted([
     [1, 0.32], [2, 0.2], [3, 0.13], [0, 0.35],
   ] as const)
@@ -55,7 +57,7 @@ export function createScenario(rng: RNG): Scenario {
   }
 
   const situation: Situation = {
-    awayScore, homeScore, outs,
+    inning, awayScore, homeScore, outs, totalOuts: outs,
     balls: 0, strikes: 0,
     bases,
     batterIdx: rng.int(9),
@@ -71,14 +73,14 @@ export function createScenario(rng: RNG): Scenario {
     deficit === 2 ? 'Down two, but this crowd believes.' :
     'Down three — they need baserunners in a hurry.'
   const table =
-    outs === 0 && runnersOn(bases) === 0 ? 'Clean slate to start the ninth.' :
+    outs === 0 && runnersOn(bases) === 0 ? `Clean slate to start the ${ordinal(inning)}.` :
     `You pick it up with ${outs} out${outs === 1 ? '' : 's'}${runnersOn(bases) ? ' and traffic on the bases' : ''}.`
 
   return { situation, intro: `${stakes} ${table}` }
 }
 
 function checkWalkOff(sit: Situation, events: PlayEvent[]): void {
-  if (sit.homeScore > sit.awayScore) {
+  if (sit.inning >= 9 && sit.homeScore > sit.awayScore) {
     sit.over = true
     sit.walkOff = true
     events.push({ kind: 'end', text: `WALK-OFF! The ${HOME_TEAM.name} take it!`, runs: 0 })
@@ -87,6 +89,15 @@ function checkWalkOff(sit: Situation, events: PlayEvent[]): void {
 
 function checkThreeOuts(sit: Situation, events: PlayEvent[]): void {
   if (sit.outs >= 3) {
+    if (sit.inning < 9) {
+      sit.inning++
+      sit.outs = 0
+      sit.balls = 0
+      sit.strikes = 0
+      sit.bases = { first: false, second: false, third: false }
+      events.push({ kind: 'end', text: `Three away — on to the ${ordinal(sit.inning)}.`, runs: 0 })
+      return
+    }
     sit.over = true
     events.push({
       kind: 'end',
@@ -96,6 +107,13 @@ function checkThreeOuts(sit: Situation, events: PlayEvent[]): void {
       runs: 0,
     })
   }
+}
+
+function ordinal(inning: number): string {
+  if (inning === 1) return '1st'
+  if (inning === 2) return '2nd'
+  if (inning === 3) return '3rd'
+  return `${inning}th`
 }
 
 function scoreRuns(sit: Situation, runs: number, events: PlayEvent[], why: string): void {
@@ -132,6 +150,7 @@ export function applyCalledPitch(sit: Situation, call: 'ball' | 'strike', batter
     sit.strikes++
     if (sit.strikes >= 3) {
       sit.outs++
+      sit.totalOuts++
       atBatOver = true
       headline = 'STRUCK HIM OUT LOOKING'
       events.push({ kind: 'K', text: `${batterName} goes down looking.`, runs: 0 })
@@ -180,6 +199,7 @@ export function applySwing(
     sit.strikes++
     if (sit.strikes >= 3) {
       sit.outs++
+      sit.totalOuts++
       events.push({ kind: 'K', text: `${batterName} strikes out swinging.`, runs: 0 })
       checkThreeOuts(sit, events)
       return { atBatOver: true, events, headline: 'STRIKEOUT SWINGING' }
@@ -196,12 +216,14 @@ export function applySwing(
   const b = sit.bases
   if (outcome.bases === 0) {
     sit.outs++
+    sit.totalOuts++
     let text = `${batterName} ${outcome.text}.`
     let runs = 0
 
     if (outcome.outType === 'ground' && b.first && sit.outs <= 2 && rng.chance(0.38)) {
       // Double play (only if two outs are actually available).
       sit.outs++
+      sit.totalOuts++
       b.first = false
       text = `${batterName} ${outcome.text} — they turn two!`
       if (sit.outs < 3) {

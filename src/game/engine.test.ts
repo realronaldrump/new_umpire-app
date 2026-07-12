@@ -9,7 +9,7 @@ import { createRng } from './rng'
 import { AWAY_TEAM, generateCloser, generateLineup, HOME_TEAM } from './roster'
 
 const freshSit = (over: Partial<Situation> = {}): Situation => ({
-  awayScore: 4, homeScore: 3, outs: 0, balls: 0, strikes: 0,
+  inning: 9, awayScore: 4, homeScore: 3, outs: 0, totalOuts: 0, balls: 0, strikes: 0,
   bases: { first: false, second: false, third: false },
   batterIdx: 0, pitchOfAtBat: 0, totalPitches: 0, over: false, walkOff: false,
   ...over,
@@ -37,6 +37,27 @@ describe('inning engine', () => {
     expect(sit.over).toBe(true)
     expect(sit.walkOff).toBe(false)
     expect(res.events.at(-1)?.text).toContain(AWAY_TEAM.name)
+  })
+
+  it('plays from the seventh through the ninth before ending', () => {
+    const sit = freshSit({ inning: 7, outs: 2, totalOuts: 2, strikes: 2 })
+    applyCalledPitch(sit, 'strike', 'Test Batter')
+    expect(sit).toMatchObject({ inning: 8, outs: 0, totalOuts: 3, over: false })
+
+    Object.assign(sit, { outs: 2, strikes: 2 })
+    applyCalledPitch(sit, 'strike', 'Test Batter')
+    expect(sit).toMatchObject({ inning: 9, outs: 0, totalOuts: 4, over: false })
+
+    Object.assign(sit, { outs: 2, strikes: 2 })
+    applyCalledPitch(sit, 'strike', 'Test Batter')
+    expect(sit).toMatchObject({ inning: 9, outs: 3, totalOuts: 5, over: true })
+  })
+
+  it('does not award a walk-off before the ninth', () => {
+    const sit = freshSit({ inning: 7, awayScore: 3, homeScore: 3, balls: 3, bases: { first: true, second: true, third: true } })
+    applyCalledPitch(sit, 'ball', 'Test Batter')
+    expect(sit.homeScore).toBe(4)
+    expect(sit.over).toBe(false)
   })
 
   it('HBP forces runners like a walk', () => {

@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers'
 import { afterEach, describe, expect, it } from 'vitest'
 import { PROTOCOL_VERSION, type ServerMessage } from '../src/multiplayer/protocol'
+import { zoneFor } from '../src/game/strikeZone'
 import worker, { type Env } from './index'
 
 const sockets: WebSocket[] = []
@@ -106,18 +107,26 @@ describe('room worker', () => {
     expect(challengeDenied.type === 'error' && challengeDenied.code).toBe('BAD_CHALLENGE')
 
     const unauthorized = waitFor(umpireSocket, 'error')
-    action(umpireSocket, { type: 'pitchIntent', intent: { typeKey: selection.snapshot.pitcher.arsenal[0][0], targetIndex: 12 } })
+    action(umpireSocket, { type: 'pitchIntent', intent: { typeKey: selection.snapshot.pitcher.arsenal[0][0], target: { u: 0.13, v: -0.27 } } })
     const denied = await unauthorized
     expect(denied.type === 'error' && denied.code).toBe('NOT_PITCHER')
 
     const command = waitFor(pitcherSocket, 'phaseChanged')
-    action(pitcherSocket, { type: 'pitchIntent', intent: { typeKey: selection.snapshot.pitcher.arsenal[0][0], targetIndex: 12 } })
-    expect((await command).type).toBe('phaseChanged')
+    action(pitcherSocket, { type: 'pitchIntent', intent: { typeKey: 'knuckleball', target: { u: 0.13, v: -0.27 } } })
+    const commandStarted = await command
+    expect(commandStarted.type).toBe('phaseChanged')
+    expect(commandStarted.type === 'phaseChanged' && commandStarted.snapshot.specialPitchesUsed).toContain('knuckleball')
     const prepared = waitFor(pitcherSocket, 'pitchPrepared')
-    action(pitcherSocket, { type: 'release', commandQuality: 0.8 })
+    action(pitcherSocket, { type: 'release', execution: { quality: 0.8, miss: { u: 0.05, v: -0.03 } } })
     const pitch = await prepared
     expect(pitch.type === 'pitchPrepared' && pitch.snapshot.commandQuality).toBe(0.8)
     expect(pitch.type === 'pitchPrepared' && pitch.snapshot.active).not.toBeNull()
+    if (pitch.type === 'pitchPrepared' && pitch.snapshot.active) {
+      expect(pitch.snapshot.active.pitch.typeKey).toBe('knuckleball')
+      const zone = zoneFor(pitch.snapshot.active.batter)
+      expect(pitch.snapshot.active.pitch.intended.x).toBeCloseTo(0.13 * zone.halfWidthFt)
+      expect(pitch.snapshot.active.pitch.intended.z).toBeCloseTo(zone.centerZFt - 0.27 * zone.halfHeightFt)
+    }
   })
 
   it('reclaims an existing seat without the replaced socket marking it offline', async () => {

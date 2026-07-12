@@ -28,6 +28,15 @@ export interface Trajectory {
   T: number
   /** Time (s) at which the ball reaches the catcher's mitt plane. */
   catchT: number
+  /** Low-spin, late aerodynamic drift unique to a knuckleball. */
+  flutter?: {
+    xAmpFt: number
+    zAmpFt: number
+    xCycles: number
+    zCycles: number
+    xPhase: number
+    zPhase: number
+  }
 }
 
 export interface PitchDescriptor {
@@ -57,15 +66,31 @@ export interface PitchDescriptor {
 
 export function posAt(traj: Trajectory, t: number): Vec3 {
   const tc = clamp(t, 0, traj.catchT)
-  return {
+  const point = {
     x: traj.p0.x + traj.v0.x * tc + 0.5 * traj.a.x * tc * tc,
     y: traj.p0.y + traj.v0.y * tc + 0.5 * traj.a.y * tc * tc,
     z: traj.p0.z + traj.v0.z * tc + 0.5 * traj.a.z * tc * tc,
   }
+  if (traj.flutter) {
+    const p = clamp(tc / Math.max(1e-6, traj.catchT), 0, 1)
+    const envelope = p * p * (3 - 2 * p)
+    point.x += traj.flutter.xAmpFt * envelope * Math.sin(2 * Math.PI * traj.flutter.xCycles * p + traj.flutter.xPhase)
+    point.z += traj.flutter.zAmpFt * envelope * Math.sin(2 * Math.PI * traj.flutter.zCycles * p + traj.flutter.zPhase)
+  }
+  return point
 }
 
 export function velAt(traj: Trajectory, t: number): Vec3 {
   const tc = clamp(t, 0, traj.catchT)
+  if (traj.flutter) {
+    const dt = 0.001
+    const lo = Math.max(0, tc - dt)
+    const hi = Math.min(traj.catchT, tc + dt)
+    const before = posAt(traj, lo)
+    const after = posAt(traj, hi)
+    const span = Math.max(1e-6, hi - lo)
+    return { x: (after.x - before.x) / span, y: (after.y - before.y) / span, z: (after.z - before.z) / span }
+  }
   return {
     x: traj.v0.x + traj.a.x * tc,
     y: traj.v0.y + traj.a.y * tc,
@@ -83,6 +108,8 @@ export interface PitcherPhysique {
   releaseHeightFt: number
   releaseYFt: number
   arsenal: ReadonlyArray<readonly [PitchTypeKey, number]>
+  /** Rare surprise offering selected for this pitcher in single player. */
+  specialtyPitch?: 'knuckleball' | 'eephus' | null
   /** Stable Statcast-style shape for each pitch; optional for older room snapshots. */
   pitchProfiles?: Partial<Record<PitchTypeKey, PitchProfile>>
 }
@@ -111,12 +138,15 @@ export interface PitchContext {
     typeKey: PitchTypeKey
     target: { u: number; v: number }
     commandQuality: number
+    /** Learned execution error from the multiplayer delivery gesture. */
+    executionMiss?: { u: number; v: number }
   } | null
 }
 
 function choosePitchType(rng: RNG, pitcher: PitcherPhysique, ctx: PitchContext): PitchTypeDef {
   if (ctx.player) return PITCH_TYPES[ctx.player.typeKey]
   if (ctx.forced) return PITCH_TYPES[ctx.forced.typeKey]
+  if (pitcher.specialtyPitch && rng.chance(0.055)) return PITCH_TYPES[pitcher.specialtyPitch]
   const ahead = ctx.strikes > ctx.balls || ctx.strikes === 2
   const behind = ctx.balls > ctx.strikes && ctx.balls >= 2
   const entries = pitcher.arsenal.map(([key, w]) => {
@@ -192,6 +222,13 @@ function chooseCrossingPoint(
   let x = intended.x + rng.gauss(0, sigma)
   let z = intended.z + rng.gauss(0, sigma * 1.1)
 
+  // Multiplayer gesture mistakes are directional, not anonymous randomness:
+  // arm-side/vertical release errors bias the pitch in the same direction.
+  if (ctx.player?.executionMiss) {
+    x += clamp(ctx.player.executionMiss.u, -0.7, 0.7) * zone.halfWidthFt
+    z += clamp(ctx.player.executionMiss.v, -0.7, 0.7) * zone.halfHeightFt
+  }
+
   // Steer a share of pitches right onto an edge so calls stay interesting.
   if (!wild && !ctx.forced && !ctx.player && rng.chance(ctx.borderlineBias)) {
     const edge = rng.weighted([
@@ -230,11 +267,12 @@ export function generatePitch(
 ): PitchDescriptor {
   const def = choosePitchType(rng, pitcher, ctx)
   const profile = pitcher.pitchProfiles?.[def.key]
+  const minMph = def.key === 'eephus' ? 42 : def.key === 'knuckleball' ? 60 : 68
   // A pitcher's shape is stable; individual offerings vary modestly around it.
   // Legacy/test pitchers without profiles retain the original full-band sampling.
   const mph = clamp(
     (profile ? rng.gauss(profile.veloMph, 0.65) : rng.range(def.velo[0], def.velo[1])) + pitcher.veloOffsetMph,
-    68,
+    minMph,
     104,
   )
   const ivbIn = profile
@@ -262,10 +300,17 @@ export function generatePitch(
   const T = p0.y / (v0Mag * 0.93)
   const T2 = T * T
 
+  // A small readability lift helps modern breaking shapes register from the
+  // umpire camera without turning ordinary pitches into arcade movement.
+  const movementScale = def.breaking && def.key !== 'knuckleball' && def.key !== 'eephus' ? 1.1 : 1
   const a: Vec3 = {
-    x: (2 * (hbIn / 12)) / T2,
+    x: (2 * ((hbIn * movementScale) / 12)) / T2,
     y: 0.09 * v0Mag / T, // drag: opposes the (negative-y) motion
-    z: -G_FTPS2 + (2 * (ivbIn / 12)) / T2,
+    // The eephus is intentionally theatrical: a steeper ballistic loop still
+    // lands on the selected target because v0 below is solved from this arc.
+    z: def.key === 'eephus'
+      ? -G_FTPS2 * 1.7
+      : -G_FTPS2 + (2 * ((ivbIn * movementScale) / 12)) / T2,
   }
 
   const v0: Vec3 = {
@@ -286,8 +331,17 @@ export function generatePitch(
   const releaseSpeedMph = Math.hypot(v0.x, v0.y, v0.z) / MPH_TO_FTPS
 
   const spinAxis = spinAxisFor(def, hbIn)
-  const traj = { p0, v0, a, T, catchT }
+  const flutter = def.key === 'knuckleball' ? {
+    xAmpFt: rng.range(1.8, 3.5) / 12,
+    zAmpFt: rng.range(1.4, 2.8) / 12,
+    xCycles: rng.range(1.35, 2.15),
+    zCycles: rng.range(1.1, 1.85),
+    xPhase: rng.range(0, Math.PI * 2),
+    zPhase: rng.range(0, Math.PI * 2),
+  } : undefined
+  const traj: Trajectory = { p0, v0, a, T, catchT, flutter }
   const metrics = trajectoryZoneMetrics(traj, batter)
+  const plateCross = posAt(traj, T)
 
   const pitch: PitchDescriptor = {
     id: nextPitchId++,
@@ -301,7 +355,7 @@ export function generatePitch(
     spinRpm,
     spinAxis,
     traj,
-    cross: { x: pc.x, z: pc.z },
+    cross: { x: plateCross.x, z: plateCross.z },
     zonePoint: metrics.point,
     intended: aim.intended,
     metrics,
@@ -311,7 +365,7 @@ export function generatePitch(
   }
 
   if (
-    !finite(T, catchT, p0.x, p0.y, p0.z, v0.x, v0.y, v0.z, a.x, a.y, a.z, pc.x, pc.z) ||
+    !finite(T, catchT, p0.x, p0.y, p0.z, v0.x, v0.y, v0.z, a.x, a.y, a.z, plateCross.x, plateCross.z) ||
     T <= 0.2 || T > 1.2
   ) {
     // Never let a bad sample reach the renderer — throw a safe center fastball.
@@ -331,6 +385,7 @@ function spinAxisFor(def: PitchTypeDef, hbIn: number): Vec3 {
     case 'top': axis = { x: -1, y: 0, z: 0.2 * side }; break
     case 'gyro': axis = { x: 0.35, y: -1, z: 0.3 * -side }; break
     case 'side': axis = { x: 0.15, y: -0.35, z: -side }; break
+    case 'flutter': axis = { x: 0.2, y: -0.95, z: 0.1 * side }; break
   }
   const m = Math.hypot(axis.x, axis.y, axis.z) || 1
   return { x: axis.x / m, y: axis.y / m, z: axis.z / m }
