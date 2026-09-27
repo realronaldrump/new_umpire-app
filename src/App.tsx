@@ -1,11 +1,10 @@
-import { PerformanceMonitor } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { useEffect, useState } from 'react'
 import { audio } from './audio/engine'
 import { installFxDirector } from './scene/fx'
 import { SceneRoot } from './scene/SceneRoot'
 import { useGame } from './store/game'
-import { useSettings, type Quality } from './store/settings'
+import { useSettings } from './store/settings'
 import { CoachTips } from './ui/CoachTips'
 import { DebugPanel } from './ui/DebugPanel'
 import { EndScreen, playAgain } from './ui/EndScreen'
@@ -19,8 +18,6 @@ import { useUi } from './store/ui'
 import { MultiplayerSurface } from './multiplayer/MultiplayerSurface'
 import { useMultiplayer } from './multiplayer/store'
 
-const DPR_CAP: Record<Quality, number> = { low: 1.25, med: 1.6, high: 2 }
-
 declare global {
   interface Window {
     __ump?: { game: typeof useGame; settings: typeof useSettings }
@@ -28,12 +25,9 @@ declare global {
 }
 
 export default function App() {
-  const quality = useSettings((s) => s.quality)
   const colorblind = useSettings((s) => s.colorblind)
   const mode = useGame((s) => s.mode)
-  const cap = DPR_CAP[quality]
-  const [dpr, setDpr] = useState(cap)
-  useEffect(() => setDpr(cap), [cap])
+  const [canvasKey, setCanvasKey] = useState(0)
 
   // Boot: prepare the first ninth.
   useEffect(() => {
@@ -153,15 +147,20 @@ export default function App() {
       <ErrorBoundary>
         <div className="stage" onPointerDown={onStagePointer}>
           <Canvas
-            shadows={quality !== 'low' ? 'percentage' : false}
-            dpr={[1, dpr]}
+            key={canvasKey}
+            onCreated={({ gl }) => {
+              // If the browser drops the GPU context, rebuild the scene
+              // (same full-quality graphics) instead of leaving a black screen.
+              gl.domElement.addEventListener('webglcontextlost', (e) => {
+                e.preventDefault()
+                window.setTimeout(() => setCanvasKey((k) => k + 1), 300)
+              }, { once: true })
+            }}
+            shadows="percentage"
+            dpr={[1, 2]}
             camera={{ fov: 44, near: 0.06, far: 4200, position: [0, 120, 300] }}
-            gl={{ antialias: quality === 'low', powerPreference: 'high-performance', stencil: false }}
+            gl={{ antialias: false, powerPreference: 'high-performance', stencil: false }}
           >
-            <PerformanceMonitor
-              onDecline={() => setDpr((d) => Math.max(1, d - 0.25))}
-              onIncline={() => setDpr((d) => Math.min(cap, d + 0.25))}
-            />
             <SceneRoot />
           </Canvas>
         </div>

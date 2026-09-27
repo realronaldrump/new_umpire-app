@@ -2,7 +2,6 @@ import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { createRng } from '../game/rng'
-import type { Quality } from '../store/settings'
 import {
   BATTERS_EYE_HALF, DEG, FOUL_ANGLE, polarScene, standRSmooth, wallH, wallR,
 } from './park'
@@ -562,7 +561,7 @@ function Flags() {
   )
 }
 
-export function Stadium({ night, quality }: { night: boolean; quality: Quality }) {
+export function Stadium({ night }: { night: boolean }) {
   return (
     <group>
       <Bowl night={night} />
@@ -570,7 +569,7 @@ export function Stadium({ night, quality }: { night: boolean; quality: Quality }
       <BattersEye />
       <Flags />
       <Lights night={night} />
-      {quality !== 'low' && <Skyline night={night} />}
+      <Skyline night={night} />
     </group>
   )
 }

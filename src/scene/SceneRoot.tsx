@@ -67,12 +67,11 @@ function SceneReady() {
 
 export function SceneRoot() {
   const night = useSettings((s) => s.nightGame)
-  const quality = useSettings((s) => s.quality)
   const orbit = useGame((s) => s.orbit)
   const batter = useGame((s) => (s.lineup.length ? s.lineup[s.sit.batterIdx] : null))
   const pitcherHand = useGame((s) => s.pitcher.hand)
-  const shadows = quality !== 'low'
-  const shadowMap = quality === 'high' ? 4096 : 2048
+  const shadows = true
+  const shadowMap = 2048
 
   return (
     <>
@@ -127,9 +126,9 @@ export function SceneRoot() {
       )}
 
       <Suspense fallback={null}>
-        <Stadium night={night} quality={quality} />
-        <Field quality={quality} />
-        <Crowd quality={quality} night={night} />
+        <Stadium night={night} />
+        <Field />
+        <Crowd night={night} />
         <Scoreboard />
         <Players />
 

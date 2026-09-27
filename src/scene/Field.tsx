@@ -2,7 +2,6 @@ import { RoundedBox } from '@react-three/drei'
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { MOUND_CENTER_Y_FT, MOUND_HEIGHT_FT, MOUND_RADIUS_FT, RUBBER_Y_FT } from '../game/constants'
-import type { Quality } from '../store/settings'
 import { S } from './coords'
 import { FIRST_BASE, FOUL_ANGLE, SECOND_BASE, THIRD_BASE, polarScene, wallR } from './park'
 import {
@@ -85,8 +84,8 @@ function moundGeometry(): THREE.BufferGeometry {
   return geo
 }
 
-export function Field({ quality }: { quality: Quality }) {
-  const ppf = quality === 'low' ? 2 : quality === 'med' ? 3 : 4
+export function Field() {
+  const ppf = 4
   const fieldMat = useMemo(() => {
     const w = FIELD_MAP.x1 - FIELD_MAP.x0
     const h = FIELD_MAP.y1 - FIELD_MAP.y0

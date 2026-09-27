@@ -3,13 +3,12 @@ import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { createRng } from '../game/rng'
 import { AWAY_TEAM, HOME_TEAM } from '../game/roster'
-import type { Quality } from '../store/settings'
 import { excitementAt } from './fx'
 import { BATTERS_EYE_HALF } from './park'
 import { LOWER_BOWL, UPPER_DECK, seatPoint, type Tier } from './Stadium'
 
-const COUNTS: Record<Quality, number> = { low: 1800, med: 5200, high: 9000 }
-const FLASHES: Record<Quality, number> = { low: 120, med: 320, high: 600 }
+const COUNT = 9000
+const FLASHES = 600
 
 const SHIRTS = [
   HOME_TEAM.primary, HOME_TEAM.primary, HOME_TEAM.primary, '#1c3f63', HOME_TEAM.accent,
@@ -83,8 +82,8 @@ function buildSeats(count: number): Seat[] {
   return seats
 }
 
-export function Crowd({ quality, night }: { quality: Quality; night: boolean }) {
-  const count = COUNTS[quality]
+export function Crowd({ night }: { night: boolean }) {
+  const count = COUNT
   const seats = useMemo(() => buildSeats(count), [count])
   const geometry = useMemo(() => {
     const g = fanGeometry()
@@ -196,7 +195,7 @@ export function Crowd({ quality, night }: { quality: Quality; night: boolean }) 
   return (
     <group>
       <primitive object={mesh} />
-      <CameraFlashes seats={seats} quality={quality} night={night} />
+      <CameraFlashes seats={seats} night={night} />
     </group>
   )
 }
@@ -229,8 +228,8 @@ void main() {
 }
 `
 
-function CameraFlashes({ seats, quality, night }: { seats: Seat[]; quality: Quality; night: boolean }) {
-  const n = FLASHES[quality]
+function CameraFlashes({ seats, night }: { seats: Seat[]; night: boolean }) {
+  const n = FLASHES
   const { geometry, material } = useMemo(() => {
     const rng = createRng('crowd-flashes')
     const pos = new Float32Array(n * 3)

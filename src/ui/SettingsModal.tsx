@@ -181,14 +181,6 @@ export function SettingsModal() {
 
           {tab === 'video' && (
             <section>
-              <Row label="Quality" hint="Low turns off post effects for older devices">
-                <Seg
-                  label="Quality"
-                  value={s.quality}
-                  options={[['low', 'LOW'], ['med', 'MEDIUM'], ['high', 'HIGH']]}
-                  onChange={(v) => s.set({ quality: v })}
-                />
-              </Row>
               <Row label="Time of day">
                 <Seg
                   label="Time of day"

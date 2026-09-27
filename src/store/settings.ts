@@ -2,8 +2,6 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { DIFFICULTY, type Difficulty } from '../game/constants'
 
-export type Quality = 'low' | 'med' | 'high'
-
 export interface SettingsState {
   difficulty: Difficulty
   masterVol: number
@@ -23,7 +21,6 @@ export interface SettingsState {
   callWindow: 'auto' | number
   zoneVisibility: 'auto' | 'always' | 'never'
   hesitationPolicy: 'miss' | 'penalty'
-  quality: Quality
   colorblind: boolean
   nightGame: boolean
   /** Subtle camera kick on the mitt pop and bat crack. */
@@ -31,14 +28,6 @@ export interface SettingsState {
   /** First-game coaching tips. */
   showTips: boolean
   set: (patch: Partial<Omit<SettingsState, 'set'>>) => void
-}
-
-/** Phones and small tablets start on Medium; desktops get the full show. */
-function defaultQuality(): Quality {
-  if (typeof window === 'undefined') return 'high'
-  const coarse = window.matchMedia?.('(pointer: coarse)').matches
-  const small = Math.min(window.screen?.width ?? 1920, window.screen?.height ?? 1080) < 700
-  return coarse || small ? 'med' : 'high'
 }
 
 export const useSettings = create<SettingsState>()(
@@ -58,14 +47,22 @@ export const useSettings = create<SettingsState>()(
       callWindow: 'auto',
       zoneVisibility: 'auto',
       hesitationPolicy: 'miss',
-      quality: defaultQuality(),
       colorblind: false,
       nightGame: true,
       cameraShake: true,
       showTips: true,
       set: (patch) => set(patch),
     }),
-    { name: 'judgment-call-settings-v1' },
+    {
+      name: 'judgment-call-settings-v1',
+      version: 2,
+      // v2: graphics are always full quality; drop the old per-device setting.
+      migrate: (persisted) => {
+        const state = { ...((persisted ?? {}) as Record<string, unknown>) }
+        delete state.quality
+        return state as unknown as SettingsState
+      },
+    },
   ),
 )
 

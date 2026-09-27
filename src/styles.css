@@ -429,6 +429,11 @@ kbd {
   animation: fadeIn 0.6s 0.8s ease both;
 }
 .skiphint:hover { color: var(--chalk); }
+.skiphint__tap { display: none; }
+@media (pointer: coarse) {
+  .skiphint__key { display: none; }
+  .skiphint__tap { display: inline; }
+}
 @keyframes fadeIn { from { opacity: 0; } }
 
 /* ---------- call prompt ---------- */
@@ -933,7 +938,7 @@ kbd {
   .coach--side { right: auto; left: var(--gutter); top: auto; bottom: 30%; transform: none; }
   .scorebug__abs { display: none; }
   .battercard__meta { display: none; }
-  .skiphint { bottom: auto; top: calc(max(16px, env(safe-area-inset-top)) + 64px); }
+  .skiphint { bottom: auto; top: calc(max(16px, env(safe-area-inset-top)) + 118px); }
 }
 
 @media (max-width: 640px) {

@@ -186,7 +186,7 @@ function SkipHint() {
   if (phase !== 'reveal' && phase !== 'newBatter' && phase !== 'swingResult' && phase !== 'prePitch') return null
   return (
     <button className="skiphint" onClick={() => useGame.getState().hurry()}>
-      <kbd>SPACE</kbd> SKIP
+      <kbd className="skiphint__key">SPACE</kbd> <span className="skiphint__tap">TAP TO</span> SKIP
     </button>
   )
 }
