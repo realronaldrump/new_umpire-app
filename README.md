@@ -42,11 +42,14 @@ npm run deploy:worker
 
 Copy the resulting `https://…workers.dev` origin into the Vercel build environment as `VITE_MULTIPLAYER_ORIGIN` for Development, Preview, and Production. Because this is a Vite variable, redeploy the frontend after changing it.
 
+The Vercel build checks that the deployed room Worker reports the same multiplayer protocol version as the frontend source. Deploy the Worker before deploying a frontend protocol change; the check prevents shipping a frontend that cannot create or join rooms.
+
 ```bash
 npx vercel@latest link --yes --project big-beautiful-umpire-app --scope davisdeatonphotographys-projects
 npx vercel@latest env add VITE_MULTIPLAYER_ORIGIN production
 npx vercel@latest env add VITE_MULTIPLAYER_ORIGIN preview
 npx vercel@latest env add VITE_MULTIPLAYER_ORIGIN development
+npm run check:multiplayer-deployment
 npx vercel@latest --prod
 ```
 
