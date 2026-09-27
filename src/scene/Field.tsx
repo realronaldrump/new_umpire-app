@@ -129,7 +129,7 @@ export function Field() {
   return (
     <group>
       {/* Everything beyond the painted map (mostly under the stands). */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, -150]} material={outerMat} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.8, -150]} material={outerMat} receiveShadow>
         <planeGeometry args={[3200, 3200]} />
       </mesh>
 

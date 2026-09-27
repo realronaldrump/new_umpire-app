@@ -158,7 +158,7 @@ export default function App() {
             }}
             shadows="percentage"
             dpr={[1, 2]}
-            camera={{ fov: 44, near: 0.06, far: 4200, position: [0, 120, 300] }}
+            camera={{ fov: 44, near: 0.35, far: 4200, position: [0, 120, 300] }}
             gl={{ antialias: false, powerPreference: 'high-performance', stencil: false }}
           >
             <SceneRoot />

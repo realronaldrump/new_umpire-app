@@ -202,7 +202,7 @@ function Bowl({ night }: { night: boolean }) {
   // Foul-territory LED boards along the low wall.
   const sideBoards = useMemo(() => {
     const make = (a0: number, a1: number) => sweep(a0, a1, 80, LOWER_BOWL.r0, () => [
-      { dr: -0.05, y: 1.2, v: 0 }, { dr: -0.05, y: 4.4, v: 1 },
+      { dr: -0.4, y: 1.2, v: 0 }, { dr: -0.4, y: 4.4, v: 1 },
     ], 102)
     return [make(58 * DEG, 150 * DEG), make(210 * DEG, 302 * DEG)]
   }, [])
