@@ -4,6 +4,8 @@ import { createRng } from './rng'
 import { generateLineup } from './roster'
 import {
   isStrike,
+  locationLabel,
+  pointZoneMetrics,
   trajectoryZoneMetrics,
   zoneFor,
   type ZoneBatter,
@@ -116,5 +118,32 @@ describe('MLB rulebook strike-zone ground truth', () => {
       )
       expect(zones[i].botFt * 12).toBeCloseTo(lineup[i].stance.kneeHollowIn, 10)
     }
+  })
+})
+
+describe('locationLabel', () => {
+  it('names the miss for balls using the batter-relative edge', () => {
+    expect(locationLabel(false, 3.14, 'inside')).toBe('3.1" INSIDE')
+    expect(locationLabel(false, 1.0, 'outside')).toBe('1.0" OUTSIDE')
+    expect(locationLabel(false, 5.2, 'high')).toBe('5.2" HIGH')
+    expect(locationLabel(false, 0.6, 'low')).toBe('0.6" LOW')
+  })
+
+  it('never calls a strike "inside" by its depth in the zone', () => {
+    expect(locationLabel(true, -4.3, 'inside')).toBe('IN THE ZONE · 4.3" DEEP')
+    expect(locationLabel(true, -1.2, 'outside')).toBe('CAUGHT THE OUTSIDE CORNER · 1.2" IN')
+    expect(locationLabel(true, -0.8, 'high')).toBe('CAUGHT THE TOP OF THE ZONE · 0.8" IN')
+    expect(locationLabel(true, 0, 'low')).toBe('ON THE BLACK · BOTTOM OF THE ZONE')
+  })
+})
+
+describe('batter-relative edges', () => {
+  it('flips inside/outside with the batter\'s side of the plate', () => {
+    // Game x is the umpire's right; a righty stands on the umpire's left.
+    const zone = zoneFor(batter())
+    const z = (zone.topFt + zone.botFt) / 2
+    expect(pointZoneMetrics(-1.2, 0.3, z, batter({ hand: 'R' })).nearestEdge).toBe('inside')
+    expect(pointZoneMetrics(-1.2, 0.3, z, batter({ hand: 'L' })).nearestEdge).toBe('outside')
+    expect(pointZoneMetrics(1.2, 0.3, z, batter({ hand: 'L' })).nearestEdge).toBe('inside')
   })
 })

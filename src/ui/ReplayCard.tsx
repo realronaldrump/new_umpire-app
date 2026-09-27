@@ -1,6 +1,7 @@
 import { BALL_RADIUS_FT, EFFECTIVE_HALF_WIDTH_FT, PLATE_HALF_WIDTH_FT } from '../game/constants'
 import { PITCH_COLORS } from '../game/pitchColors'
 import type { CallRecord } from '../game/report'
+import { locationLabel } from '../game/strikeZone'
 import { useGame } from '../store/game'
 
 const FX = (x: number) => 110 + x * 40
@@ -123,7 +124,7 @@ export function ReplayCard({ record }: { record: CallRecord }) {
         <div className="replay-card__pitch">
           <i style={{ background: PITCH_COLORS[pitch.typeKey] }} />
           {Math.round(pitch.mph)} MPH · {pitch.typeName.toUpperCase()}
-          <span>{Math.abs(record.edgeDistIn) < 0.05 ? 'ON THE BLACK' : `${Math.abs(record.edgeDistIn).toFixed(1)}" ${record.truthStrike ? 'INSIDE' : 'OFF'}`}</span>
+          <span>{locationLabel(record.truthStrike, record.edgeDistIn, record.nearestEdge)}</span>
         </div>
       )}
       <div className="replay-card__calls">

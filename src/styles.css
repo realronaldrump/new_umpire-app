@@ -930,6 +930,7 @@ kbd {
   .replay-card__note { display: none; }
   .umpchip { display: none; }
   .pitchread { top: auto; bottom: calc(11% + 116px); }
+  .hud:has(.replay-card) .pitchread { display: none; }
   .callprompt { gap: 10px; bottom: max(14px, env(safe-area-inset-bottom)); width: calc(100% - 2 * var(--gutter)); justify-content: space-between; }
   .callbtn { min-width: 0; flex: 1; padding: 16px 10px 12px; }
   .callbtn__word { font-size: 2rem; }

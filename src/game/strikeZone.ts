@@ -268,6 +268,27 @@ const EDGE_WORD: Record<ZoneEdge, string> = {
   low: 'below the knees',
 }
 
+const CORNER: Record<ZoneEdge, string> = {
+  inside: 'INSIDE CORNER',
+  outside: 'OUTSIDE CORNER',
+  high: 'TOP OF THE ZONE',
+  low: 'BOTTOM OF THE ZONE',
+}
+
+/**
+ * Short broadcast location tag for a take, relative to the batter's stance:
+ * balls read as INSIDE / OUTSIDE / HIGH / LOW by how far they missed;
+ * strikes name the edge they caught (or how deep in the zone they were).
+ */
+export function locationLabel(strike: boolean, edgeDistIn: number, nearestEdge: ZoneEdge): string {
+  const d = Math.abs(edgeDistIn)
+  const dTxt = `${d.toFixed(1)}"`
+  if (d < 0.05) return strike ? `ON THE BLACK · ${CORNER[nearestEdge]}` : `JUST OFF · ${nearestEdge.toUpperCase()}`
+  if (!strike) return `${dTxt} ${nearestEdge.toUpperCase()}`
+  if (isBorderline(edgeDistIn)) return `CAUGHT THE ${CORNER[nearestEdge]} · ${dTxt} IN`
+  return `IN THE ZONE · ${dTxt} DEEP`
+}
+
 /** One-line broadcast note for the replay card. */
 export function describeTake(playerCalledStrike: boolean, metrics: ZoneMetrics): string {
   const d = Math.abs(metrics.edgeDistIn)
