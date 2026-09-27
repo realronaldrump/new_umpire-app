@@ -11,20 +11,23 @@ import { clamp, createRng } from '../src/game/rng'
 import { generateCloser, generateLineup } from '../src/game/roster'
 import { describeTake, zoneFor } from '../src/game/strikeZone'
 import {
-  PROTOCOL_VERSION, ROOM_CODE_RE, parseClientMessage, targetAt,
-  type ClientMessage, type MultiplayerPhase, type PitchIntent, type PlayerPublic,
+  PROTOCOL_VERSION, ROOM_CODE_RE, parseClientMessage,
+  type ClientMessage, type MultiplayerPhase, type PitchExecution, type PitchIntent, type PlayerPublic,
   type RemoteActivePitch, type RemoteBanner, type RemoteTickerItem,
   type RoomSnapshot, type RoundSummary, type ServerMessage,
 } from '../src/multiplayer/protocol'
 import { computePitchingReport, computeSeriesResult } from '../src/multiplayer/scoring'
+import { legendRolesForOuts } from '../src/multiplayer/legend'
 
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomDurableObject>
+  LEADERBOARD: DurableObjectNamespace<LeaderboardDurableObject>
   TIMING_SCALE?: string
 }
 
 interface InternalPlayer extends PlayerPublic {
   token: string
+  leaderboardId: string
   lastSeenAt: number
 }
 
@@ -35,6 +38,12 @@ interface StoredRoom extends Omit<RoomSnapshot, 'players'> {
   initialHomeScore: number
   initialTotalPitches: number
   commandQualities: number[]
+  commandQualityOwners: string[]
+  umpireCallOwners: string[]
+  pitchingOutsByPlayer: Record<string, number>
+  pitchingRunsByPlayer: Record<string, number>
+  pitcherChallengesByPlayer: Record<string, number>
+  lastRoleSwapOuts: number
   lastActivityAt: number
   bannerKey: number
   tickerId: number
@@ -55,7 +64,9 @@ const RECONNECT_MS = 90_000
 const HEARTBEAT_TIMEOUT_MS = 25_000
 const CALL_GRACE_MS = 150
 const PITCH_SELECT_MS = 12_000
-const COMMAND_MS = 1_600
+// The delivery is a deliberate load-and-drive gesture, not a reaction timer.
+// This is an anti-stall ceiling; a completed gesture advances immediately.
+const COMMAND_MS = 6_000
 const ROUND_INTRO_MS = 1_800
 const PRE_PITCH_MS = 900
 const CHALLENGE_WINDOW_MS = 2_200
@@ -63,6 +74,11 @@ const CHALLENGE_WINDOW_MS = 2_200
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
+    if (url.pathname === '/leaderboard') {
+      if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders() })
+      const id = env.LEADERBOARD.idFromName('global')
+      return env.LEADERBOARD.get(id).fetch(request)
+    }
     if (url.pathname === '/health') {
       return Response.json({ ok: true, service: 'umpire-multiplayer', protocolVersion: PROTOCOL_VERSION }, {
         headers: { 'Access-Control-Allow-Origin': '*' },
@@ -77,6 +93,154 @@ export default {
     return env.ROOMS.get(id).fetch(request)
   },
 } satisfies ExportedHandler<Env>
+
+type LeaderboardDifficulty = 'rookie' | 'pro' | 'legend'
+
+interface LeaderboardEntry {
+  playerId: string
+  name: string
+  difficulty: LeaderboardDifficulty
+  score: number
+  accuracyPct: number
+  weightedPct: number
+  totalCalls: number
+  playedAt: number
+}
+
+interface HeadToHeadEntry {
+  playerId: string
+  name: string
+  wins: number
+  losses: number
+  draws: number
+  seriesPlayed: number
+  pointsFor: number
+  pointsAgainst: number
+  lastPlayedAt: number
+}
+
+interface HeadToHeadSeries {
+  matchId: string
+  players: Array<{ playerId: string; name: string; score: number }>
+  winnerIds: string[]
+  playedAt: number
+}
+
+const LEADERBOARD_LIMIT = 100
+const leaderboardDifficulties = new Set<LeaderboardDifficulty>(['rookie', 'pro', 'legend'])
+
+function corsHeaders(): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  }
+}
+
+export class LeaderboardDurableObject extends DurableObject<Env> {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    if (request.method === 'GET') {
+      if (url.searchParams.get('mode') === 'head-to-head') return this.headToHeadRanking()
+      const difficulty = url.searchParams.get('difficulty')
+      if (!leaderboardDifficulties.has(difficulty as LeaderboardDifficulty)) return this.json({ error: 'Invalid difficulty.' }, 400)
+      return this.ranking(difficulty as LeaderboardDifficulty)
+    }
+    if (request.method !== 'POST') return this.json({ error: 'Method not allowed.' }, 405)
+
+    let body: Record<string, unknown>
+    try { body = await request.json() as Record<string, unknown> } catch { return this.json({ error: 'Invalid JSON.' }, 400) }
+    if (body.mode === 'head-to-head') {
+      if (url.pathname !== '/head-to-head-result') return this.json({ error: 'Head-to-head results are recorded by game rooms.' }, 403)
+      return this.recordHeadToHead(body)
+    }
+    const difficulty = body.difficulty as LeaderboardDifficulty
+    const playerId = typeof body.playerId === 'string' ? body.playerId : ''
+    const name = typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ') : ''
+    const score = Number(body.score)
+    const accuracyPct = Number(body.accuracyPct)
+    const weightedPct = Number(body.weightedPct)
+    const totalCalls = Number(body.totalCalls)
+    if (!leaderboardDifficulties.has(difficulty) || !/^[a-f\d-]{20,64}$/i.test(playerId) || name.length < 1 || name.length > 20
+      || !Number.isFinite(score) || score < 0 || score > 100 || !Number.isFinite(accuracyPct) || accuracyPct < 0 || accuracyPct > 100
+      || !Number.isFinite(weightedPct) || weightedPct < 0 || weightedPct > 100 || !Number.isInteger(totalCalls) || totalCalls < 1 || totalCalls > 250) {
+      return this.json({ error: 'Result did not pass leaderboard validation.' }, 400)
+    }
+
+    const key = `${difficulty}:${playerId}`
+    const previous = await this.ctx.storage.get<LeaderboardEntry>(key)
+    if (!previous || score > previous.score) {
+      await this.ctx.storage.put(key, { playerId, name, difficulty, score, accuracyPct, weightedPct, totalCalls, playedAt: Date.now() } satisfies LeaderboardEntry)
+    } else if (name !== previous.name) {
+      await this.ctx.storage.put(key, { ...previous, name })
+    }
+    return this.ranking(difficulty)
+  }
+
+  private async ranking(difficulty: LeaderboardDifficulty): Promise<Response> {
+    const stored = await this.ctx.storage.list<LeaderboardEntry>({ prefix: `${difficulty}:` })
+    const entries = [...stored.values()]
+      .sort((a, b) => b.score - a.score || b.weightedPct - a.weightedPct || b.accuracyPct - a.accuracyPct || a.playedAt - b.playedAt)
+      .slice(0, LEADERBOARD_LIMIT)
+      .map((entry, index) => ({ ...entry, rank: index + 1 }))
+    return this.json({ entries, updatedAt: Date.now() })
+  }
+
+  private async recordHeadToHead(body: Record<string, unknown>): Promise<Response> {
+    const matchId = typeof body.matchId === 'string' ? body.matchId : ''
+    const rawPlayers = Array.isArray(body.players) ? body.players : []
+    const winnerIds = Array.isArray(body.winnerIds) ? body.winnerIds.filter((id): id is string => typeof id === 'string') : []
+    const players = rawPlayers.map((raw) => {
+      const player = raw as Record<string, unknown>
+      return { playerId: String(player.playerId ?? ''), name: String(player.name ?? '').trim(), score: Number(player.score) }
+    })
+    if (!/^[A-HJ-NP-Z2-9]{6}$/.test(matchId) || players.length !== 2 || players.some((player) =>
+      !/^[a-f\d-]{20,64}$/i.test(player.playerId) || player.name.length < 1 || player.name.length > 20 || !Number.isFinite(player.score)
+    ) || winnerIds.some((id) => !players.some((player) => player.playerId === id))) {
+      return this.json({ error: 'Head-to-head result did not pass validation.' }, 400)
+    }
+    const matchKey = `h2h-match:${matchId}`
+    if (await this.ctx.storage.get(matchKey)) return this.headToHeadRanking()
+
+    const playedAt = Date.now()
+    for (const player of players) {
+      const opponent = players.find((candidate) => candidate.playerId !== player.playerId)!
+      const key = `h2h-player:${player.playerId}`
+      const previous = await this.ctx.storage.get<HeadToHeadEntry>(key) ?? {
+        playerId: player.playerId, name: player.name, wins: 0, losses: 0, draws: 0,
+        seriesPlayed: 0, pointsFor: 0, pointsAgainst: 0, lastPlayedAt: playedAt,
+      }
+      const draw = winnerIds.length !== 1
+      await this.ctx.storage.put(key, {
+        ...previous,
+        name: player.name,
+        wins: previous.wins + (winnerIds.length === 1 && winnerIds[0] === player.playerId ? 1 : 0),
+        losses: previous.losses + (winnerIds.length === 1 && winnerIds[0] !== player.playerId ? 1 : 0),
+        draws: previous.draws + (draw ? 1 : 0),
+        seriesPlayed: previous.seriesPlayed + 1,
+        pointsFor: previous.pointsFor + player.score,
+        pointsAgainst: previous.pointsAgainst + opponent.score,
+        lastPlayedAt: playedAt,
+      } satisfies HeadToHeadEntry)
+    }
+    await this.ctx.storage.put(matchKey, { matchId, players, winnerIds, playedAt } satisfies HeadToHeadSeries)
+    return this.headToHeadRanking()
+  }
+
+  private async headToHeadRanking(): Promise<Response> {
+    const stored = await this.ctx.storage.list<HeadToHeadEntry>({ prefix: 'h2h-player:' })
+    const entries = [...stored.values()]
+      .map((entry) => ({ ...entry, winPct: entry.seriesPlayed ? (entry.wins + entry.draws * 0.5) / entry.seriesPlayed * 100 : 0 }))
+      .sort((a, b) => b.wins - a.wins || b.winPct - a.winPct || (b.pointsFor - b.pointsAgainst) - (a.pointsFor - a.pointsAgainst) || b.lastPlayedAt - a.lastPlayedAt)
+      .slice(0, LEADERBOARD_LIMIT)
+      .map((entry, index) => ({ ...entry, rank: index + 1 }))
+    return this.json({ entries, updatedAt: Date.now() })
+  }
+
+  private json(body: unknown, status = 200): Response {
+    return Response.json(body, { status, headers: corsHeaders() })
+  }
+}
 
 export class RoomDurableObject extends DurableObject<Env> {
   private timingScale: number
@@ -148,7 +312,7 @@ export class RoomDurableObject extends DurableObject<Env> {
         await this.handlePitchIntent(ws, state, player, message.intent)
         break
       case 'release':
-        await this.handleRelease(ws, state, player, message.commandQuality)
+        await this.handleRelease(ws, state, player, message.execution)
         break
       case 'umpCall':
         await this.handleUmpCall(ws, state, player, message.call)
@@ -227,7 +391,10 @@ export class RoomDurableObject extends DurableObject<Env> {
       }
       if (state.phaseDeadline !== null && now >= state.phaseDeadline) {
         await this.advancePhase(state)
-        await this.commit(state, state.phase === 'roundComplete' || state.phase === 'roleSwap' ? 'roundComplete' : 'phaseChanged')
+        const type = state.phase === 'seriesComplete' ? 'seriesComplete'
+          : state.phase === 'roundComplete' || state.phase === 'roleSwap' ? 'roundComplete'
+          : 'phaseChanged'
+        await this.commit(state, type)
         return
       }
     }
@@ -246,12 +413,14 @@ export class RoomDurableObject extends DurableObject<Env> {
       if (seat < 0) return this.sendError(ws, state, 'ROOM_FULL', 'This room already has two players.')
       player = {
         id: crypto.randomUUID(), token: message.playerToken, name: message.name.trim(),
+        leaderboardId: message.leaderboardId,
         connected: true, ready: false, lastSeenAt: Date.now(),
       }
       state.players[seat] = player
       if (!state.hostId) state.hostId = player.id
     } else {
       player.name = message.name.trim()
+      player.leaderboardId = message.leaderboardId
       player.connected = true
       player.ready = false
       player.lastSeenAt = Date.now()
@@ -286,19 +455,24 @@ export class RoomDurableObject extends DurableObject<Env> {
     if (state.status !== 'playing' || state.phase !== 'pitchSelect' || state.pitcherId !== player.id) {
       return this.sendError(ws, state, 'NOT_PITCHER', 'Only the active pitcher can choose a pitch.')
     }
-    if (!state.pitcher.arsenal.some(([key]) => key === intent.typeKey)) {
+    const specialty = intent.typeKey === 'knuckleball' || intent.typeKey === 'eephus' ? intent.typeKey : null
+    if (!specialty && !state.pitcher.arsenal.some(([key]) => key === intent.typeKey)) {
       return this.sendError(ws, state, 'BAD_PITCH', 'That pitch is not in this closer’s arsenal.')
     }
+    if (specialty && state.specialPitchesUsed.includes(specialty)) {
+      return this.sendError(ws, state, 'SPECIAL_SPENT', 'That specialty pitch has already been used against this batter.')
+    }
+    if (specialty) state.specialPitchesUsed.push(specialty)
     state.pitchIntent = intent
     this.enter(state, 'command', COMMAND_MS)
     await this.commit(state, 'phaseChanged')
   }
 
-  private async handleRelease(ws: WebSocket, state: StoredRoom, player: InternalPlayer, quality: number): Promise<void> {
+  private async handleRelease(ws: WebSocket, state: StoredRoom, player: InternalPlayer, execution: PitchExecution): Promise<void> {
     if (state.status !== 'playing' || state.phase !== 'command' || state.pitcherId !== player.id || !state.pitchIntent) {
       return this.sendError(ws, state, 'BAD_RELEASE', 'There is no delivery to release.')
     }
-    this.preparePitch(state, clamp(quality, 0, 1))
+    this.preparePitch(state, execution)
     await this.commit(state, 'pitchPrepared')
   }
 
@@ -361,6 +535,17 @@ export class RoomDurableObject extends DurableObject<Env> {
     state.pitcherId = first.id
     state.umpireId = second.id
     state.round = 1
+    const startInning = state.difficulty === 'legend' ? 8 : 9
+    state.initialSituation.inning = startInning
+    if (state.difficulty === 'legend') {
+      state.initialSituation.half = 'top'
+      state.initialSituation.outs = 0
+      state.initialSituation.balls = 0
+      state.initialSituation.strikes = 0
+      state.initialSituation.bases = { first: false, second: false, third: false }
+      state.intro = 'Top of the 8th. Switch pitcher and umpire every three outs.'
+    }
+    state.initialSituation.totalOuts = state.initialSituation.outs
     this.resetRound(state)
   }
 
@@ -390,6 +575,19 @@ export class RoomDurableObject extends DurableObject<Env> {
     state.pitchIntent = null
     state.commandQuality = null
     state.commandQualities = []
+    state.commandQualityOwners = []
+    state.umpireCallOwners = []
+    state.pitchingOutsByPlayer = {}
+    state.pitchingRunsByPlayer = {}
+    state.pitcherChallengesByPlayer = {}
+    state.lastRoleSwapOuts = 0
+    for (const player of state.players) {
+      if (!player) continue
+      state.pitchingOutsByPlayer[player.id] = 0
+      state.pitchingRunsByPlayer[player.id] = 0
+      state.pitcherChallengesByPlayer[player.id] = ABS_CHALLENGES_PER_SIDE
+    }
+    state.specialPitchesUsed = []
     state.pitcherChallengesLeft = ABS_CHALLENGES_PER_SIDE
     state.pitcherChallengesMax = ABS_CHALLENGES_PER_SIDE
     state.pendingCall = null
@@ -404,11 +602,11 @@ export class RoomDurableObject extends DurableObject<Env> {
         this.openPitchSelection(state)
         break
       case 'pitchSelect':
-        state.pitchIntent = { typeKey: state.pitcher.arsenal[0][0], targetIndex: 12 }
-        this.preparePitch(state, 0.25)
+        state.pitchIntent = { typeKey: state.pitcher.arsenal[0][0], target: { u: 0, v: 0 } }
+        this.preparePitch(state, { quality: 0.25, miss: { u: 0, v: -0.2 } })
         break
       case 'command':
-        this.preparePitch(state, 0.25)
+        this.preparePitch(state, { quality: 0.25, miss: { u: 0, v: -0.2 } })
         break
       case 'prePitch':
         this.enter(state, 'windup', TIMING.windupMs)
@@ -465,13 +663,15 @@ export class RoomDurableObject extends DurableObject<Env> {
     this.enter(state, 'pitchSelect', PITCH_SELECT_MS)
   }
 
-  private preparePitch(state: StoredRoom, commandQuality: number): void {
-    const intent = state.pitchIntent ?? { typeKey: state.pitcher.arsenal[0][0], targetIndex: 12 }
-    const pitchSeed = `${state.seedText}:round:${state.round}:pitch:${state.sit.totalPitches}:${intent.typeKey}:${intent.targetIndex}`
+  private preparePitch(state: StoredRoom, execution: PitchExecution): void {
+    const intent = state.pitchIntent ?? { typeKey: state.pitcher.arsenal[0][0], target: { u: 0, v: 0 } }
+    const commandQuality = clamp(execution.quality, 0, 1)
+    const targetKey = `${intent.target.u.toFixed(4)},${intent.target.v.toFixed(4)}`
+    const pitchSeed = `${state.seedText}:round:${state.round}:pitch:${state.sit.totalPitches}:${intent.typeKey}:${targetKey}`
     const batter = state.lineup[state.sit.batterIdx]
     const pitch = generatePitch(createRng(`${pitchSeed}:physics`), state.pitcher, batter, {
       balls: state.sit.balls, strikes: state.sit.strikes, borderlineBias: 0,
-      player: { typeKey: intent.typeKey, target: targetAt(intent.targetIndex), commandQuality },
+      player: { typeKey: intent.typeKey, target: intent.target, commandQuality, executionMiss: execution.miss },
     })
     const plan = decideSwing(createRng(`${pitchSeed}:swing`), batter, pitch, state.sit)
     const outcome = plan.swings ? resolveSwing(createRng(`${pitchSeed}:outcome`), batter, pitch, state.sit) : null
@@ -482,6 +682,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     const framing = this.framingFor(state, pitch, batter, pitchSeed)
     state.commandQuality = commandQuality
     state.commandQualities.push(commandQuality)
+    if (state.pitcherId) state.commandQualityOwners.push(state.pitcherId)
     state.active = {
       pitch, plan, outcome, batter, timeScale, flightStartAt: 0,
       flightDurMs: flightSec * 1000, hitTraj: null, hitStartAt: 0, framing, catchPos,
@@ -516,14 +717,17 @@ export class RoomDurableObject extends DurableObject<Env> {
     const zone = zoneFor(batter)
     const record: CallRecord = {
       pitchNo: sit.totalPitches, batterName: batter.name, countBefore,
+      pitchType: pitch.typeName, pitchSpeedMph: pitch.mph,
       playerCall: applied, truthStrike: truth, correct, hesitated,
       edgeDistIn: pitch.metrics.edgeDistIn, nearestEdge: pitch.metrics.nearestEdge,
       leverage: leverageOf(state.sit), endedAtBat: result.atBatOver,
       note: hesitated ? 'No call before the window closed — the book scored it for you.' : describeTake(call === 'strike', pitch.metrics),
       cross: { x: pitch.zonePoint.x, z: pitch.zonePoint.z }, zoneTopFt: zone.topFt, zoneBotFt: zone.botFt,
     }
+    this.recordPitchResult(state, state.sit, sit)
     state.sit = sit
     state.calls.push(record)
+    if (state.umpireId) state.umpireCallOwners.push(state.umpireId)
     state.pendingAtBatOver = result.atBatOver
     state.reveal = { record, headline: result.headline, atBatOver: result.atBatOver, batterHand: batter.hand }
     this.pushEvents(state, result.events)
@@ -575,6 +779,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     const zone = zoneFor(batter)
     const record: CallRecord = {
       pitchNo: sit.totalPitches, batterName: batter.name, countBefore: challenge.countBefore,
+      pitchType: pitch.typeName, pitchSpeedMph: pitch.mph,
       playerCall: 'ball', truthStrike: pitch.truthStrike, correct: !pitch.truthStrike, hesitated: false,
       edgeDistIn: pitch.metrics.edgeDistIn, nearestEdge: pitch.metrics.nearestEdge,
       leverage: challenge.leverage, endedAtBat: result.atBatOver,
@@ -584,12 +789,15 @@ export class RoomDurableObject extends DurableObject<Env> {
       cross: { x: pitch.zonePoint.x, z: pitch.zonePoint.z }, zoneTopFt: zone.topFt, zoneBotFt: zone.botFt,
       challenged: true, overturned: challenge.overturned,
     }
+    this.recordPitchResult(state, state.sit, sit)
     state.sit = sit
     state.calls.push(record)
+    if (state.umpireId) state.umpireCallOwners.push(state.umpireId)
     state.pendingAtBatOver = result.atBatOver
     state.pitcherChallengesLeft = challenge.overturned
       ? state.pitcherChallengesLeft
       : Math.max(0, state.pitcherChallengesLeft - 1)
+    if (state.pitcherId) state.pitcherChallengesByPlayer[state.pitcherId] = state.pitcherChallengesLeft
     state.absChallenge = null
     state.reveal = { record, headline: result.headline, atBatOver: result.atBatOver, batterHand: batter.hand }
     this.pushEvents(state, [
@@ -631,6 +839,7 @@ export class RoomDurableObject extends DurableObject<Env> {
       }
       this.pushEvents(state, result.events)
     }
+    this.recordPitchResult(state, state.sit, sit)
     state.sit = sit
     state.pendingAtBatOver = result.atBatOver
     state.active = { ...state.active, hitTraj, hitStartAt: Date.now() }
@@ -648,6 +857,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     const result = applyHbp(sit, batter.name)
     const rng = createRng(`${state.seedText}:round:${state.round}:hbp:${sit.totalPitches}`)
     const from = posAt(pitch.traj, pitch.traj.T)
+    this.recordPitchResult(state, state.sit, sit)
     state.sit = sit
     state.pendingAtBatOver = true
     state.active = {
@@ -662,21 +872,30 @@ export class RoomDurableObject extends DurableObject<Env> {
 
   private afterResolution(state: StoredRoom): void {
     if (state.sit.over) return this.completeRound(state)
-    if (state.pendingAtBatOver) nextBatter(state.sit)
+    if (state.pendingAtBatOver) {
+      nextBatter(state.sit)
+      state.specialPitchesUsed = []
+    }
     state.pendingAtBatOver = false
+    if (state.difficulty === 'legend' && state.sit.totalOuts > state.lastRoleSwapOuts && state.sit.totalOuts % 3 === 0) {
+      this.switchLegendSides(state)
+      return
+    }
     this.openPitchSelection(state)
   }
 
   private completeRound(state: StoredRoom): void {
     if (!state.pitcherId || !state.umpireId) return
+    if (state.difficulty === 'legend') return this.completeLegendGame(state)
     const summary: RoundSummary = {
       round: state.round,
       pitcherId: state.pitcherId,
       umpireId: state.umpireId,
       finalSituation: structuredClone(state.sit),
       pitching: computePitchingReport({
-        startOuts: state.initialSituation.outs,
-        finalOuts: state.sit.outs,
+        startOuts: state.initialSituation.totalOuts,
+        finalOuts: state.sit.totalOuts,
+        outsRequired: (9 - state.initialSituation.inning) * 3 + (3 - state.initialSituation.outs),
         runsAllowed: Math.max(0, state.sit.homeScore - state.initialHomeScore),
         pitchesThrown: state.sit.totalPitches - state.initialTotalPitches,
         commandQualities: state.commandQualities,
@@ -700,6 +919,74 @@ export class RoomDurableObject extends DurableObject<Env> {
       state.phase = 'seriesComplete'
       state.banner = null
     }
+  }
+
+  private recordPitchResult(state: StoredRoom, before: Situation, after: Situation): void {
+    if (state.difficulty !== 'legend' || !state.pitcherId) return
+    const pitcherId = state.pitcherId
+    const outs = Math.max(0, after.totalOuts - before.totalOuts)
+    const runs = Math.max(0, after.awayScore + after.homeScore - before.awayScore - before.homeScore)
+    state.pitchingOutsByPlayer[pitcherId] = (state.pitchingOutsByPlayer[pitcherId] ?? 0) + outs
+    state.pitchingRunsByPlayer[pitcherId] = (state.pitchingRunsByPlayer[pitcherId] ?? 0) + runs
+  }
+
+  private switchLegendSides(state: StoredRoom): void {
+    if (!state.firstPitcherId) return
+    const players = state.players.filter((player): player is InternalPlayer => Boolean(player))
+    const roles = legendRolesForOuts(state.firstPitcherId, players.map((player) => player.id), state.sit.totalOuts)
+    state.pitcherId = roles.pitcherId
+    state.umpireId = roles.umpireId
+    state.lastRoleSwapOuts = state.sit.totalOuts
+    state.pitcherChallengesLeft = state.pitcherChallengesByPlayer[roles.pitcherId] ?? ABS_CHALLENGES_PER_SIDE
+    state.pitcherChallengesMax = ABS_CHALLENGES_PER_SIDE
+    state.active = null
+    state.reveal = null
+    state.banner = {
+      key: state.bannerKey++,
+      title: `SWITCH SIDES · ${state.sit.half.toUpperCase()} OF THE ${state.sit.inning}TH`,
+      sub: 'Pitcher and umpire roles alternate after every three outs.',
+      tone: 'gold',
+    }
+    this.enter(state, 'roundIntro', ROUND_INTRO_MS)
+  }
+
+  private completeLegendGame(state: StoredRoom): void {
+    if (!state.firstPitcherId) return
+    const players = state.players.filter((player): player is InternalPlayer => Boolean(player))
+    if (players.length !== 2) return
+    const ordered = [
+      players.find((player) => player.id === state.firstPitcherId) ?? players[0],
+      players.find((player) => player.id !== state.firstPitcherId) ?? players[1],
+    ]
+    state.roundSummaries = ordered.map((pitcher, index) => {
+      const umpire = ordered[1 - index]
+      const commandQualities = state.commandQualities.filter((_, qualityIndex) => state.commandQualityOwners[qualityIndex] === pitcher.id)
+      const calls = state.calls.filter((_, callIndex) => state.umpireCallOwners[callIndex] === umpire.id)
+      const outsRecorded = state.pitchingOutsByPlayer[pitcher.id] ?? 0
+      return {
+        round: (index + 1) as 1 | 2,
+        pitcherId: pitcher.id,
+        umpireId: umpire.id,
+        finalSituation: structuredClone(state.sit),
+        pitching: computePitchingReport({
+          startOuts: 0,
+          finalOuts: outsRecorded,
+          outsRequired: 6,
+          runsAllowed: state.pitchingRunsByPlayer[pitcher.id] ?? 0,
+          pitchesThrown: commandQualities.length,
+          commandQualities,
+        }),
+        umpiring: computeReport(calls),
+        calls: structuredClone(calls),
+      }
+    })
+    state.seriesResult = computeSeriesResult(players.map((player) => player.id), state.roundSummaries)
+    state.active = null
+    state.reveal = null
+    state.phaseDeadline = null
+    state.status = 'seriesComplete'
+    state.phase = 'seriesComplete'
+    state.banner = null
   }
 
   private pauseForDisconnect(state: StoredRoom): void {
@@ -741,6 +1028,30 @@ export class RoomDurableObject extends DurableObject<Env> {
       existing.pitcherChallengesLeft ??= existing.pitcherChallengesMax
       existing.pendingCall ??= null
       existing.absChallenge ??= null
+      existing.sit.inning ??= 9
+      existing.sit.half ??= 'bottom'
+      existing.sit.totalOuts ??= existing.sit.outs
+      existing.initialSituation.inning ??= 9
+      existing.initialSituation.half ??= 'bottom'
+      existing.initialSituation.totalOuts ??= existing.initialSituation.outs
+      existing.specialPitchesUsed ??= []
+      existing.commandQualityOwners ??= []
+      existing.umpireCallOwners ??= []
+      existing.pitchingOutsByPlayer ??= {}
+      existing.pitchingRunsByPlayer ??= {}
+      existing.pitcherChallengesByPlayer ??= {}
+      existing.lastRoleSwapOuts ??= 0
+      // Protocol v2 rooms stored a five-by-five target index. Preserve active
+      // rooms across the v3 continuous-target rollout.
+      const legacyIntent = existing.pitchIntent as (PitchIntent & { targetIndex?: number }) | null
+      if (legacyIntent && !legacyIntent.target) {
+        const values = [-1.5, -0.75, 0, 0.75, 1.5]
+        const index = Math.max(0, Math.min(24, Math.trunc(legacyIntent.targetIndex ?? 12)))
+        existing.pitchIntent = {
+          typeKey: legacyIntent.typeKey,
+          target: { u: values[index % 5], v: values[4 - Math.floor(index / 5)] },
+        }
+      }
       return existing
     }
     const rng = createRng(`multiplayer:${roomCode}`)
@@ -752,12 +1063,14 @@ export class RoomDurableObject extends DurableObject<Env> {
       players: [null, null], pitcherId: null, umpireId: null, intro: scenario.intro,
       seedText: roomCode, sit: structuredClone(scenario.situation), lineup: generateLineup(rng), pitcher: generateCloser(rng),
       active: null, reveal: null, banner: null, ticker: [], calls: [], callDeadline: null,
-      pendingAtBatOver: false, pitchIntent: null, commandQuality: null, roundSummaries: [],
+      pendingAtBatOver: false, pitchIntent: null, commandQuality: null, specialPitchesUsed: [], roundSummaries: [],
       pitcherChallengesLeft: ABS_CHALLENGES_PER_SIDE, pitcherChallengesMax: ABS_CHALLENGES_PER_SIDE,
       pendingCall: null, absChallenge: null,
       seriesResult: null, disconnectDeadline: null, revision: 0,
       initialSituation: structuredClone(scenario.situation), initialHomeScore: scenario.situation.homeScore,
-      initialTotalPitches: scenario.situation.totalPitches, commandQualities: [], firstPitcherId: null,
+      initialTotalPitches: scenario.situation.totalPitches, commandQualities: [], commandQualityOwners: [],
+      umpireCallOwners: [], pitchingOutsByPlayer: {}, pitchingRunsByPlayer: {}, pitcherChallengesByPlayer: {},
+      lastRoleSwapOuts: 0, firstPitcherId: null,
       lastActivityAt: now, bannerKey: 1, tickerId: 1,
       pausedBanner: null,
     }
@@ -780,6 +1093,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     state.lastActivityAt = Date.now()
     await this.ctx.storage.put(STATE_KEY, state)
     await this.scheduleNextAlarm(state)
+    if (type === 'seriesComplete' && state.seriesResult) await this.recordHeadToHead(state)
     const snapshot = this.snapshot(state)
     if (type === 'roundComplete') {
       const summary = state.roundSummaries[state.roundSummaries.length - 1]
@@ -791,6 +1105,30 @@ export class RoomDurableObject extends DurableObject<Env> {
     if (type === 'pitchPrepared') return this.broadcast(state, { type, snapshot })
     if (type === 'playResolved') return this.broadcast(state, { type, snapshot })
     this.broadcast(state, { type: 'snapshot', snapshot })
+  }
+
+  private async recordHeadToHead(state: StoredRoom): Promise<void> {
+    if (!state.seriesResult) return
+    const players = state.players.filter((player): player is InternalPlayer => Boolean(player))
+    if (players.length !== 2 || players.some((player) => !player.leaderboardId)) return
+    const scores = state.seriesResult.scores
+    const id = this.env.LEADERBOARD.idFromName('global')
+    const response = await this.env.LEADERBOARD.get(id).fetch(new Request('https://leaderboard.internal/head-to-head-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'head-to-head', matchId: state.roomCode,
+        players: players.map((player) => ({
+          playerId: player.leaderboardId,
+          name: player.name,
+          score: scores.find((score) => score.playerId === player.id)?.overallScore ?? 0,
+        })),
+        winnerIds: state.seriesResult.overallChampionIds.map((roomPlayerId) =>
+          players.find((player) => player.id === roomPlayerId)?.leaderboardId,
+        ).filter(Boolean),
+      }),
+    }))
+    if (!response.ok) console.error('Could not record head-to-head result', await response.text())
   }
 
   private async scheduleNextAlarm(state: StoredRoom): Promise<void> {

@@ -61,8 +61,8 @@ export const DIFFICULTY: Record<Difficulty, DifficultyPreset> = {
     zoneVisibleDuringPitch: false,
     callWindowMs: 1400,
     timeScale: 0.85,
-    borderlineBias: 0.3,
-    framingInches: 1.8,
+    borderlineBias: 0.36,
+    framingInches: 2.0,
     absChallenges: 0,
   },
   legend: {
@@ -72,8 +72,8 @@ export const DIFFICULTY: Record<Difficulty, DifficultyPreset> = {
     zoneVisibleDuringPitch: false,
     callWindowMs: 975,
     timeScale: 1.0,
-    borderlineBias: 0.46,
-    framingInches: 3.4,
+    borderlineBias: 0.52,
+    framingInches: 3.6,
     absChallenges: ABS_CHALLENGES_PER_SIDE,
   },
 }

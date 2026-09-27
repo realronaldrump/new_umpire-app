@@ -6,8 +6,9 @@ import { useGame } from '../store/game'
 import { useSettings } from '../store/settings'
 import {
   PROTOCOL_VERSION, ROOM_CODE_RE, roomCode,
-  type ClientMessage, type MultiplayerRole, type RoomSnapshot, type ServerMessage,
+  type ClientMessage, type MultiplayerRole, type PitchExecution, type RoomSnapshot, type ServerMessage,
 } from './protocol'
+import { leaderboardPlayerId } from '../leaderboard/api'
 
 type WithoutProtocol<T> = T extends unknown ? Omit<T, 'protocolVersion'> : never
 type ClientPayload = WithoutProtocol<ClientMessage>
@@ -31,8 +32,8 @@ interface MultiplayerState {
   configure: (difficulty: Difficulty) => void
   ready: () => void
   resumeReady: () => void
-  choosePitch: (typeKey: PitchTypeKey, targetIndex: number) => void
-  release: (commandQuality: number) => void
+  choosePitch: (typeKey: PitchTypeKey, target: { u: number; v: number }) => void
+  release: (execution: PitchExecution) => void
   call: (call: 'ball' | 'strike') => void
   challenge: () => void
   clearError: () => void
@@ -84,8 +85,8 @@ export const useMultiplayer = create<MultiplayerState>()((set, get) => ({
   configure: (difficulty) => send({ type: 'configure', difficulty }),
   ready: () => send({ type: 'ready' }),
   resumeReady: () => send({ type: 'resumeReady' }),
-  choosePitch: (typeKey, targetIndex) => send({ type: 'pitchIntent', intent: { typeKey, targetIndex } }),
-  release: (commandQuality) => send({ type: 'release', commandQuality: Math.max(0, Math.min(1, commandQuality)) }),
+  choosePitch: (typeKey, target) => send({ type: 'pitchIntent', intent: { typeKey, target } }),
+  release: (execution) => send({ type: 'release', execution }),
   call: (call) => send({ type: 'umpCall', call }),
   challenge: () => send({ type: 'pitcherChallenge' }),
   clearError: () => set({ error: null }),
@@ -129,7 +130,7 @@ function connectToRoom(
   ws.addEventListener('open', () => {
     if (generation !== connectionGeneration) return
     reconnectAttempt = 0
-    sendRaw(ws, { type: 'join', roomCode: code, playerToken: token, name })
+    sendRaw(ws, { type: 'join', roomCode: code, playerToken: token, leaderboardId: leaderboardPlayerId(), name })
   })
   ws.addEventListener('message', (event) => {
     if (generation !== connectionGeneration) return

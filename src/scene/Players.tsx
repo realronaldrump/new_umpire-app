@@ -238,7 +238,7 @@ const _ball = new THREE.Vector3()
 
 /* ------------------------------------------------------------- fielders */
 
-function Fielder({ x, y, seed }: { x: number; y: number; seed: number }) {
+function Fielder({ x, y, seed, team }: { x: number; y: number; seed: number; team: typeof HOME_TEAM }) {
   const home = S(x, y, 0)
   const faceHome = yawToward(home[0], home[2], 0, 0)
   const pose = (now: number, dt: number, out: Pose, root: THREE.Group) => {
@@ -274,7 +274,7 @@ function Fielder({ x, y, seed }: { x: number; y: number; seed: number }) {
   }
   return (
     <group position={home}>
-      <Figure jersey={AWAY_TEAM.primary} pants="#cfd3da" accent={AWAY_TEAM.accent} glove pose={pose} />
+      <Figure key={team.abbr} jersey={team.primary} pants="#cfd3da" accent={team.accent} glove pose={pose} />
     </group>
   )
 }
@@ -313,7 +313,7 @@ function occupied(b: Bases): number[] {
   return out
 }
 
-function Runners() {
+function Runners({ team }: { team: typeof HOME_TEAM }) {
   const runners = useRef<Runner[]>([])
   const lastBases = useRef<Bases | null>(null)
   const lastSeed = useRef('')
@@ -398,7 +398,7 @@ function Runners() {
         return (
           <group key={i} ref={(o) => { slots.current[i] = o }} visible={false}>
             <group>
-              <Figure jersey={HOME_TEAM.primary} pants="#e4e7eb" accent={HOME_TEAM.accent} helmet pose={makePose(i)} />
+              <Figure key={team.abbr} jersey={team.primary} pants="#e4e7eb" accent={team.accent} helmet pose={makePose(i)} />
             </group>
           </group>
         )
@@ -409,7 +409,7 @@ function Runners() {
 
 /* ------------------------------------------------------------ base coaches */
 
-function Coach({ x, y, seed }: { x: number; y: number; seed: number }) {
+function Coach({ x, y, seed, team }: { x: number; y: number; seed: number; team: typeof HOME_TEAM }) {
   const p = S(x, y, 0)
   const faceHome = yawToward(p[0], p[2], 0, 0)
   const pose = (now: number, dt: number, out: Pose) => {
@@ -421,18 +421,22 @@ function Coach({ x, y, seed }: { x: number; y: number; seed: number }) {
   }
   return (
     <group position={p}>
-      <Figure jersey={HOME_TEAM.primary} pants="#e4e7eb" accent={HOME_TEAM.accent} pose={pose} />
+      <Figure key={team.abbr} jersey={team.primary} pants="#e4e7eb" accent={team.accent} pose={pose} />
     </group>
   )
 }
 
 export function Players() {
+  // Bottom halves: home bats, away fields. Top halves (extras) swap.
+  const topHalf = useGame((s) => s.sit.half === 'top')
+  const batting = topHalf ? AWAY_TEAM : HOME_TEAM
+  const fielding = topHalf ? HOME_TEAM : AWAY_TEAM
   return (
     <group>
-      {FIELDER_SPOTS.map((f, i) => <Fielder key={f.key} x={f.x} y={f.y} seed={i * 1.7} />)}
-      <Runners />
-      <Coach x={84} y={48} seed={0.4} />
-      <Coach x={-84} y={48} seed={2.1} />
+      {FIELDER_SPOTS.map((f, i) => <Fielder key={f.key} x={f.x} y={f.y} seed={i * 1.7} team={fielding} />)}
+      <Runners team={batting} />
+      <Coach x={84} y={48} seed={0.4} team={batting} />
+      <Coach x={-84} y={48} seed={2.1} team={batting} />
     </group>
   )
 }

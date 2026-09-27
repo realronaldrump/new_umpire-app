@@ -9,8 +9,10 @@ export type PitchTypeKey =
   | 'knucklecurve'
   | 'changeup'
   | 'splitter'
+  | 'knuckleball'
+  | 'eephus'
 
-export type SpinStyle = 'back' | 'top' | 'gyro' | 'side'
+export type SpinStyle = 'back' | 'top' | 'gyro' | 'side' | 'flutter'
 
 export interface PitchTypeDef {
   key: PitchTypeKey
@@ -88,6 +90,16 @@ export const PITCH_TYPES: Record<PitchTypeKey, PitchTypeDef> = {
     key: 'splitter', name: 'Splitter', short: 'FS',
     velo: [83, 90.9], ivb: [-0.9, 8.9], hb: [7.4, 14.9], spinRpm: [950, 1750],
     spin: 'back', wildness: 1.32, breaking: true,
+  },
+  knuckleball: {
+    key: 'knuckleball', name: 'Knuckleball', short: 'KN',
+    velo: [66, 76], ivb: [-2, 7], hb: [-3.5, 3.5], spinRpm: [80, 420],
+    spin: 'flutter', wildness: 1.52, breaking: true,
+  },
+  eephus: {
+    key: 'eephus', name: 'Eephus', short: 'EP',
+    velo: [46, 57], ivb: [-18, -8], hb: [-2.5, 2.5], spinRpm: [900, 1700],
+    spin: 'top', wildness: 1.3, breaking: true,
   },
 }
 

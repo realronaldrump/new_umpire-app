@@ -10,7 +10,7 @@ import {
   battedTrajectory, generatePitch, posAt, velAt,
   type PitchDescriptor, type Trajectory, type Vec3,
 } from '../game/physics'
-import type { PitchTypeKey } from '../game/pitchTypes'
+import { ALL_PITCH_KEYS, type PitchTypeKey } from '../game/pitchTypes'
 import { computeReport, type CallRecord, type ReportCard } from '../game/report'
 import { createRng, randomSeedText, type RNG } from '../game/rng'
 import { generateCloser, generateLineup, nameOnBack, type BatterDef, type PitcherDef } from '../game/roster'
@@ -18,7 +18,7 @@ import { describeTake, zoneFor } from '../game/strikeZone'
 import { effectiveCallWindowMs, effectiveTimeScale, useSettings } from './settings'
 import type { AbsChallengeState, RoomSnapshot } from '../multiplayer/protocol'
 
-export type GameMode = 'single' | 'multiplayer'
+export type GameMode = 'single' | 'practice' | 'multiplayer'
 
 export type Phase =
   | 'menu'
@@ -120,6 +120,7 @@ interface GameState {
 
   newGame: (seed?: string) => void
   playBall: () => void
+  startPractice: () => void
   tick: (now: number) => void
   makeCall: (call: 'ball' | 'strike') => void
   hurry: () => void
@@ -176,7 +177,9 @@ export const useGame = create<GameState>()((set, get) => {
       forced: forced ? { typeKey: forced.typeKey, loc: forced.loc } : null,
     })
 
-    let plan = decideSwing(rng, batter, pitch, s.sit)
+    let plan = s.mode === 'practice'
+      ? { swings: false, hbp: false, swingProb: 0 }
+      : decideSwing(rng, batter, pitch, s.sit)
     if (forced?.forceTake) plan = { swings: false, hbp: false, swingProb: 0 }
     const outcome = plan.swings ? resolveSwing(rng, batter, pitch, s.sit) : null
 
@@ -250,6 +253,50 @@ export const useGame = create<GameState>()((set, get) => {
     const leverage = leverageOf(s.sit)
     const countBefore = `${s.sit.balls}-${s.sit.strikes}`
 
+    if (s.mode === 'practice') {
+      const zone = zoneFor(batter)
+      const applied = hesitated ? (truth ? 'strike' : 'ball') : call
+      const correct = hesitated && settings.hesitationPolicy === 'miss'
+        ? false
+        : (call === 'strike') === truth
+      const pitchNo = s.sit.totalPitches + 1
+      const record: CallRecord = {
+        pitchNo,
+        batterName: 'Practice',
+        countBefore: '—',
+        pitchType: pitch.typeName,
+        pitchSpeedMph: pitch.mph,
+        playerCall: applied,
+        truthStrike: truth,
+        correct,
+        hesitated,
+        edgeDistIn: pitch.metrics.edgeDistIn,
+        nearestEdge: pitch.metrics.nearestEdge,
+        leverage: 0,
+        endedAtBat: false,
+        note: hesitated
+          ? 'No call before the window closed.'
+          : describeTake(call === 'strike', pitch.metrics),
+        cross: { x: pitch.zonePoint.x, z: pitch.zonePoint.z },
+        zoneTopFt: zone.topFt,
+        zoneBotFt: zone.botFt,
+      }
+      if (!hesitated) audio.umpCall(applied, settings.umpVoice)
+      const sit = { ...s.sit, totalPitches: pitchNo, pitchOfAtBat: pitchNo }
+      enter('reveal', TIMING.revealMs, {
+        sit,
+        calls: [...s.calls, record],
+        reveal: { record, headline: correct ? 'CORRECT' : 'MISSED', atBatOver: false, batterHand: batter.hand },
+        banner: {
+          key: bannerKey++,
+          title: correct ? 'CORRECT' : `MISSED · ${truth ? 'STRIKE' : 'BALL'}`,
+          tone: correct ? 'good' : 'bad',
+        },
+        callDeadline: null,
+      })
+      return
+    }
+
     // The player's call (or the true call, after a hesitation) governs the game.
     const applied = hesitated ? (truth ? 'strike' : 'ball') : call
     const sit = structuredClone(s.sit)
@@ -260,6 +307,8 @@ export const useGame = create<GameState>()((set, get) => {
       pitchNo: sit.totalPitches,
       batterName: batter.name,
       countBefore,
+      pitchType: pitch.typeName,
+      pitchSpeedMph: pitch.mph,
       playerCall: applied,
       truthStrike: truth,
       correct,
@@ -364,6 +413,8 @@ export const useGame = create<GameState>()((set, get) => {
       pitchNo: sit.totalPitches,
       batterName: batter.name,
       countBefore: c.countBefore,
+      pitchType: pitch.typeName,
+      pitchSpeedMph: pitch.mph,
       playerCall: c.callOnField,
       truthStrike: truth,
       correct: (c.callOnField === 'strike') === truth,
@@ -494,6 +545,10 @@ export const useGame = create<GameState>()((set, get) => {
 
   function afterResolution(): void {
     const s = get()
+    if (s.mode === 'practice') {
+      startPrePitch()
+      return
+    }
     if (s.sit.over) {
       enter('inningOver', Infinity, {
         report: computeReport(s.calls),
@@ -539,7 +594,7 @@ export const useGame = create<GameState>()((set, get) => {
     seedText: '',
     intro: '',
     sit: {
-      awayScore: 0, homeScore: 0, outs: 0, balls: 0, strikes: 0,
+      inning: 9, half: 'bottom', awayScore: 0, homeScore: 0, outs: 0, totalOuts: 0, balls: 0, strikes: 0,
       bases: { first: false, second: false, third: false },
       batterIdx: 0, pitchOfAtBat: 0, totalPitches: 0, over: false, walkOff: false,
     },
@@ -621,6 +676,45 @@ export const useGame = create<GameState>()((set, get) => {
         defensiveChallengesMax: absChallenges,
         absChallenge: null,
       })
+    },
+
+    startPractice: () => {
+      const s = get()
+      if (s.phase !== 'menu') return
+      audio.init()
+      audio.uiClick()
+      const practiceArsenal = ALL_PITCH_KEYS
+        .filter((key) => key !== 'knuckleball' && key !== 'eephus')
+        .map((key) => [key, 1] as const)
+      set({
+        mode: 'practice',
+        pitcher: { ...s.pitcher, arsenal: practiceArsenal },
+        calls: [],
+        ticker: [],
+        active: null,
+        reveal: null,
+        report: null,
+        pendingAtBatOver: false,
+        challengesLeft: 0,
+        challengesMax: 0,
+        defensiveChallengesLeft: 0,
+        defensiveChallengesMax: 0,
+        absChallenge: null,
+        sit: {
+          ...s.sit,
+          balls: 0,
+          strikes: 0,
+          outs: 0,
+          totalOuts: 0,
+          pitchOfAtBat: 0,
+          totalPitches: 0,
+          over: false,
+          walkOff: false,
+          bases: { first: false, second: false, third: false },
+        },
+        banner: { key: bannerKey++, title: 'PRACTICE MODE', sub: 'CALL EVERY PITCH', tone: 'gold' },
+      })
+      startPrePitch()
     },
 
     tick: (t) => {

@@ -12,4 +12,6 @@ export const PITCH_COLORS: Record<PitchTypeKey, string> = {
   knucklecurve: '#5b8cff',
   changeup: '#5ef08a',
   splitter: '#3fd9c4',
+  eephus: '#f2f6f9',
+  knuckleball: '#b7a4ff',
 }

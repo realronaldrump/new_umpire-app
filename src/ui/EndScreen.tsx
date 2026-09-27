@@ -5,6 +5,8 @@ import type { CallRecord } from '../game/report'
 import { AWAY_TEAM, HOME_TEAM } from '../game/roster'
 import { useGame } from '../store/game'
 import { KZone, VerdictChip } from './ReplayCard'
+import { savedLeaderboardName, submitLeaderboardResult } from '../leaderboard/api'
+import { useSettings } from '../store/settings'
 
 /** Replay: same seed restarts this exact ninth; otherwise a fresh one. */
 export function playAgain(sameSeed: boolean): void {
@@ -81,6 +83,9 @@ export function EndScreen() {
   const sit = useGame((s) => s.sit)
   const seed = useGame((s) => s.seedText)
   const calls = useGame((s) => s.calls)
+  const difficulty = useSettings((s) => s.difficulty)
+  const [name, setName] = useState(savedLeaderboardName)
+  const [submitState, setSubmitState] = useState<'idle' | 'posting' | 'posted' | 'error'>('idle')
   if (mode === 'multiplayer' || phase !== 'inningOver' || !report) return null
 
   const resultLine = sit.walkOff
@@ -92,6 +97,17 @@ export function EndScreen() {
   const worst = report.blownHighLeverage
   const noCalls = report.totalCalls === 0
   const gradeKey = noCalls ? 'none' : report.grade[0]
+  const postScore = async () => {
+    if (!name.trim() || report.totalCalls < 1 || submitState === 'posting' || submitState === 'posted') return
+    setSubmitState('posting')
+    try {
+      await submitLeaderboardResult({
+        name: name.trim(), difficulty, score: report.gradeScore, accuracyPct: report.accuracyPct,
+        weightedPct: report.weightedPct, totalCalls: report.totalCalls, seed,
+      })
+      setSubmitState('posted')
+    } catch { setSubmitState('error') }
+  }
 
   return (
     <div className="overlay end">
@@ -164,6 +180,16 @@ export function EndScreen() {
         {noCalls && (
           <p className="end__clean end__clean--muted">Every pitch was swung at — the ninth played itself. Run it back for another look.</p>
         )}
+
+        <section className="end__online panel">
+          <div><span>ONLINE SOLO LEADERBOARD</span><b>{report.gradeScore.toFixed(1)} QUALIFYING SCORE</b></div>
+          <label><span>UMPIRE NAME</span><input value={name} maxLength={20} placeholder="Your name" onChange={(event) => { setName(event.target.value); setSubmitState('idle') }} /></label>
+          <button className="btn btn--gold" disabled={!name.trim() || report.totalCalls < 1 || submitState === 'posting' || submitState === 'posted'} onClick={postScore}>
+            {submitState === 'posting' ? 'POSTING…' : submitState === 'posted' ? 'IN THE BOOK' : 'POST SCORE'}
+          </button>
+          {submitState === 'error' && <small>Could not reach the online scorebook.</small>}
+          {report.totalCalls < 1 && <small>A game needs at least one called pitch to qualify.</small>}
+        </section>
 
         <div className="end__row">
           <button className="btn btn--gold btn--play" onClick={() => playAgain(false)}>NEW NINTH</button>

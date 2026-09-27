@@ -61,7 +61,7 @@ function ScoreBug() {
         </div>
       </div>
       <div className="scorebug__state">
-        <span className="scorebug__inning">▼9</span>
+        <span className="scorebug__inning">{sit.half === 'top' ? '▲' : '▼'}{sit.inning}</span>
         <MiniDiamond bases={sit.bases} size={36} />
       </div>
       <div className="scorebug__count">
@@ -91,6 +91,7 @@ function UmpireChip() {
   const calls = useGame((s) => s.calls)
   const pitches = useGame((s) => s.sit.totalPitches)
   const pitcher = useGame((s) => s.pitcher)
+  const mode = useGame((s) => s.mode)
   const correct = calls.filter((c) => c.correct).length
   const pct = calls.length ? Math.round((100 * correct) / calls.length) : null
   let streak = 0
@@ -105,7 +106,7 @@ function UmpireChip() {
       </div>
       <span className="umpchip__bar" aria-hidden><i style={{ width: `${pct ?? 0}%` }} /></span>
       <span className="umpchip__pitcher">
-        {pitcher.name.toUpperCase()} #{pitcher.number} · {pitcher.hand}HP · P {pitches}
+        {mode === 'practice' ? 'PRACTICE' : `${pitcher.name.toUpperCase()} #${pitcher.number} · ${pitcher.hand}HP · P ${pitches}`}
       </span>
     </div>
   )
@@ -287,15 +288,16 @@ function PauseVeil() {
 export function Hud() {
   const phase = useGame((s) => s.phase)
   const reveal = useGame((s) => s.reveal)
+  const mode = useGame((s) => s.mode)
   if (phase === 'menu' || phase === 'inningOver') return null
   return (
     <div className="hud">
       <CallFlash />
-      <ScoreBug />
+      {mode !== 'practice' && <ScoreBug />}
       <UmpireChip />
       <TopButtons />
-      <BatterCard />
-      <Ticker />
+      {mode !== 'practice' && <BatterCard />}
+      {mode !== 'practice' && <Ticker />}
       <PitchReadout />
       <Banner />
       <CallPrompt />

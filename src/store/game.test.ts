@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ALL_PITCH_KEYS } from '../game/pitchTypes'
 import { useGame } from './game'
 import { useSettings } from './settings'
 
@@ -71,7 +72,7 @@ describe('game store state machine', () => {
 
   it('runs ABS challenges on legend: the robot zone rules, the economy holds', () => {
     useSettings.setState({ difficulty: 'legend', callWindow: 'auto', pitchSpeed: 'auto', hesitationPolicy: 'miss' })
-    useGame.getState().newGame('ABSNINE')
+    useGame.getState().newGame('ABSNINE-CHALLENGE')
     useGame.getState().setDebug({ forceChallenge: true })
     useGame.getState().playBall()
     expect(useGame.getState().challengesMax).toBe(2)
@@ -136,6 +137,37 @@ describe('game store state machine', () => {
     const end = useGame.getState()
     expect(end.phase).toBe('inningOver')
     expect(end.calls.every((c) => !c.challenged)).toBe(true)
+  })
+
+  it('runs endless all-take practice pitches without a count or inning state', () => {
+    useSettings.setState({ difficulty: 'rookie', callWindow: 'auto', pitchSpeed: 'auto' })
+    useGame.getState().newGame('PRACTICE')
+    useGame.getState().startPractice()
+
+    expect(useGame.getState().pitcher.arsenal.map(([key]) => key)).toEqual(
+      ALL_PITCH_KEYS.filter((key) => key !== 'knuckleball' && key !== 'eephus'),
+    )
+
+    let callsMade = 0
+    while (callsMade < 8) {
+      vi.advanceTimersByTime(50)
+      const g = useGame.getState()
+      g.tick(performance.now())
+      const after = useGame.getState()
+      if (after.phase === 'call' && after.active) {
+        expect(after.active.plan.swings).toBe(false)
+        after.makeCall(after.active.pitch.truthStrike ? 'strike' : 'ball')
+        callsMade++
+      }
+    }
+
+    const end = useGame.getState()
+    expect(end.mode).toBe('practice')
+    expect(end.phase).not.toBe('inningOver')
+    expect(end.calls).toHaveLength(8)
+    expect(end.calls.every((call) => call.correct)).toBe(true)
+    expect([end.sit.balls, end.sit.strikes, end.sit.outs]).toEqual([0, 0, 0])
+    expect(end.challengesMax).toBe(0)
   })
 
   it('is seed-reproducible at the store level', () => {

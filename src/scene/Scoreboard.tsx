@@ -6,6 +6,8 @@ import { useGame } from '../store/game'
 import { DEG, polarScene } from './park'
 import { LOWER_BOWL } from './Stadium'
 
+const inningOrdinal = (n: number): string => `${n}${n === 1 ? 'ST' : n === 2 ? 'ND' : n === 3 ? 'RD' : 'TH'}`
+
 const W = 1600
 const H = 720
 
@@ -75,7 +77,7 @@ export function Scoreboard() {
       ctx.fillText(`${HOME_TEAM.name.toUpperCase()} PARK`, 40, 52)
       ctx.textAlign = 'right'
       ctx.fillStyle = '#f5b942'
-      ctx.fillText('▼ 9TH', W - 40, 52)
+      ctx.fillText(`${s.sit.half === 'top' ? '▲' : '▼'} ${inningOrdinal(s.sit.inning)}`, W - 40, 52)
 
       // Line score.
       const row = (y: number, abbr: string, color: string, name: string, score: number) => {

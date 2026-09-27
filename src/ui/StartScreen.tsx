@@ -7,6 +7,7 @@ import { useGame } from '../store/game'
 import { useSettings } from '../store/settings'
 import { useUi } from '../store/ui'
 import { useMultiplayer } from '../multiplayer/store'
+import { Leaderboard } from '../leaderboard/Leaderboard'
 
 const DIFF_KEYS: Difficulty[] = ['rookie', 'pro', 'legend']
 
@@ -45,6 +46,7 @@ export function StartScreen() {
   const mpOpen = useMultiplayer((s) => s.open)
   const [editing, setEditing] = useState(false)
   const [seedInput, setSeedInput] = useState('')
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false)
 
   if (phase !== 'menu' || mode === 'multiplayer' || mpOpen) return null
 
@@ -58,6 +60,7 @@ export function StartScreen() {
   const preset = DIFFICULTY[difficulty]
 
   return (
+    <>
     <div className="overlay start">
       <div className="start__inner">
         <header className="start__masthead">
@@ -117,6 +120,9 @@ export function StartScreen() {
             <svg viewBox="0 0 20 20" aria-hidden><path d="M5 3.5v13l11-6.5z" fill="currentColor" /></svg>
             PLAY BALL
           </button>
+          <button className="btn btn--practice" onClick={() => useGame.getState().startPractice()}>
+            PRACTICE PITCHES
+          </button>
           <button className="btn btn--versus" onClick={() => useMultiplayer.getState().openEntry()}>
             2-PLAYER SERIES
           </button>
@@ -129,6 +135,10 @@ export function StartScreen() {
           <span aria-hidden>·</span>
           <button className="linkbtn" onClick={() => { audio.uiClick(); useUi.getState().set({ settingsOpen: true }) }}>
             Settings
+          </button>
+          <span aria-hidden>·</span>
+          <button className="linkbtn" onClick={() => { audio.uiClick(); setLeaderboardOpen(true) }}>
+            Leaderboard
           </button>
           <span aria-hidden>·</span>
           {editing ? (
@@ -161,5 +171,7 @@ export function StartScreen() {
         <p className="start__foot"><kbd>ENTER</kbd> play ball · <kbd>B</kbd>/<kbd>S</kbd> call it · <kbd>SPACE</kbd> skip ahead · <kbd>ESC</kbd> pause</p>
       </div>
     </div>
+    {leaderboardOpen && <Leaderboard onClose={() => setLeaderboardOpen(false)} />}
+    </>
   )
 }

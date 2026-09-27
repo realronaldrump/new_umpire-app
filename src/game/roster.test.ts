@@ -97,5 +97,20 @@ describe('modern pitcher arsenals', () => {
     expect(midpoint(PITCH_TYPES.sinker.hb)).toBeGreaterThan(0)
     expect(midpoint(PITCH_TYPES.changeup.hb)).toBeGreaterThan(0)
     expect(midpoint(PITCH_TYPES.splitter.spinRpm)).toBeLessThan(midpoint(PITCH_TYPES.fourseam.spinRpm))
+    expect(midpoint(PITCH_TYPES.knuckleball.velo)).toBeLessThan(midpoint(PITCH_TYPES.changeup.velo))
+    expect(midpoint(PITCH_TYPES.eephus.velo)).toBeLessThan(midpoint(PITCH_TYPES.knuckleball.velo))
+  })
+
+  it('randomly assigns rare single-player specialty pitches without adding them to the normal arsenal', () => {
+    const assignments = { knuckleball: 0, eephus: 0, none: 0 }
+    for (let i = 0; i < 500; i++) {
+      const closer = generateCloser(createRng(`specialty-${i}`))
+      const specialty = closer.specialtyPitch ?? 'none'
+      assignments[specialty]++
+      expect(closer.arsenal.some(([key]) => key === 'knuckleball' || key === 'eephus')).toBe(false)
+    }
+    expect(assignments.knuckleball).toBeGreaterThan(80)
+    expect(assignments.eephus).toBeGreaterThan(60)
+    expect(assignments.none).toBeGreaterThan(150)
   })
 })
