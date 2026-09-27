@@ -87,7 +87,7 @@ export function Pitcher({ hand }: { hand: 'R' | 'L' }) {
         {/* Back (anchor) leg */}
         <mesh position={[armSide * -0.28, 1.55, -0.1]} castShadow>
           <capsuleGeometry args={[0.2, 2.4, 4, 8]} />
-          <meshStandardMaterial color="#c9ced6" roughness={0.85} />
+          <meshPhysicalMaterial color="#c9ced6" roughness={0.85} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
         </mesh>
         <mesh position={[armSide * -0.28, 0.14, 0.12]} castShadow>
           <boxGeometry args={[0.42, 0.2, 0.72]} />
@@ -97,12 +97,12 @@ export function Pitcher({ hand }: { hand: 'R' | 'L' }) {
         <group ref={thighRef} position={[armSide * 0.3, 2.7, 0]}>
           <mesh position={[0, -0.7, 0]} castShadow>
             <capsuleGeometry args={[0.2, 1.2, 4, 8]} />
-            <meshStandardMaterial color="#c9ced6" roughness={0.85} />
+            <meshPhysicalMaterial color="#c9ced6" roughness={0.85} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
           </mesh>
           <group ref={shinRef} position={[0, -1.4, 0]}>
             <mesh position={[0, -0.6, 0]} castShadow>
               <capsuleGeometry args={[0.17, 1.1, 4, 8]} />
-              <meshStandardMaterial color="#c9ced6" roughness={0.85} />
+              <meshPhysicalMaterial color="#c9ced6" roughness={0.85} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
             </mesh>
             <mesh position={[0, -1.25, 0.14]}>
               <boxGeometry args={[0.3, 0.2, 0.6]} />
@@ -114,7 +114,7 @@ export function Pitcher({ hand }: { hand: 'R' | 'L' }) {
         <group ref={torsoRef} position={[0, 4.05, 0]}>
           <mesh castShadow>
             <capsuleGeometry args={[0.44, 1.3, 4, 12]} />
-            <meshStandardMaterial color={AWAY_TEAM.primary} roughness={0.75} />
+            <meshPhysicalMaterial color={AWAY_TEAM.primary} roughness={0.75} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
           </mesh>
           {/* Tucked jersey, belt and piping distinguish a baseball uniform. */}
           <mesh position={[0, -0.78, 0]}>
@@ -127,11 +127,11 @@ export function Pitcher({ hand }: { hand: 'R' | 'L' }) {
           </mesh>
           <mesh position={[0, 0.2, 0.43]}>
             <boxGeometry args={[0.045, 1.35, 0.025]} />
-            <meshStandardMaterial color={AWAY_TEAM.accent} roughness={0.65} />
+            <meshPhysicalMaterial color={AWAY_TEAM.accent} roughness={0.65} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
           </mesh>
           <mesh position={[0, 0.35, 0.3]}>
             <planeGeometry args={[0.55, 0.4]} />
-            <meshStandardMaterial color={AWAY_TEAM.accent} roughness={0.7} side={THREE.DoubleSide} />
+            <meshPhysicalMaterial color={AWAY_TEAM.accent} roughness={0.7} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" side={THREE.DoubleSide} />
           </mesh>
           {/* Head + cap */}
           <mesh position={[0, 1.15, 0]}>
@@ -140,7 +140,7 @@ export function Pitcher({ hand }: { hand: 'R' | 'L' }) {
           </mesh>
           <mesh position={[0, 1.3, 0.02]}>
             <sphereGeometry args={[0.26, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
-            <meshStandardMaterial color="#17181d" roughness={0.6} />
+            <meshStandardMaterial color="#17181d" roughness={0.55} />
           </mesh>
           <mesh position={[0, 1.3, 0.27]} scale={[1, 0.16, 0.72]}>
             <sphereGeometry args={[0.3, 14, 8]} />
@@ -150,7 +150,7 @@ export function Pitcher({ hand }: { hand: 'R' | 'L' }) {
           {/* Glove arm */}
           <mesh position={[armSide * -0.62, 0.35, 0.25]} rotation={[0.5, 0, armSide * -0.7]} castShadow>
             <capsuleGeometry args={[0.13, 1.15, 4, 8]} />
-            <meshStandardMaterial color={AWAY_TEAM.primary} roughness={0.75} />
+            <meshPhysicalMaterial color={AWAY_TEAM.primary} roughness={0.75} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
           </mesh>
           <mesh position={[armSide * -0.85, -0.05, 0.55]}>
             <sphereGeometry args={[0.26, 14, 10]} />
@@ -165,7 +165,7 @@ export function Pitcher({ hand }: { hand: 'R' | 'L' }) {
           <group ref={armRef} position={[armSide * 0.6, 0.55, 0]}>
             <mesh position={[0, -0.95, 0]} castShadow>
               <capsuleGeometry args={[0.13, 1.7, 4, 8]} />
-              <meshStandardMaterial color={AWAY_TEAM.primary} roughness={0.75} />
+              <meshPhysicalMaterial color={AWAY_TEAM.primary} roughness={0.75} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
             </mesh>
             <mesh position={[0, -1.85, 0]}>
               <sphereGeometry args={[0.13, 8, 8]} />

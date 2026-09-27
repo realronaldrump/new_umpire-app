@@ -1,5 +1,7 @@
 import { BALL_RADIUS_FT, EFFECTIVE_HALF_WIDTH_FT, PLATE_HALF_WIDTH_FT } from '../game/constants'
+import { PITCH_COLORS } from '../game/pitchColors'
 import type { CallRecord } from '../game/report'
+import { useGame } from '../store/game'
 
 const FX = (x: number) => 110 + x * 40
 const FY = (z: number) => 236 - z * 44
@@ -55,7 +57,7 @@ export function KZone({ record, compact = false }: { record: CallRecord; compact
       {/* The pitch */}
       <circle
         cx={FX(record.cross.x)} cy={FY(record.cross.z)} r={BALL_RADIUS_FT * 40 + 0.6}
-        fill={good ? 'var(--teal)' : 'var(--ember)'}
+        fill={good ? 'var(--good)' : 'var(--bad)'}
         stroke="#f6f9fc" strokeWidth={1.8}
       />
       {!compact && (
@@ -107,8 +109,9 @@ export function VerdictChip({ record }: { record: CallRecord }) {
 }
 
 export function ReplayCard({ record }: { record: CallRecord }) {
+  const pitch = useGame((s) => s.active?.pitch)
   return (
-    <aside className="replay-card" aria-live="polite">
+    <aside className={`replay-card ${record.hesitated ? '' : record.correct ? 'replay-card--good' : 'replay-card--bad'}`} aria-live="polite">
       <div className="replay-card__head">
         <span className="replay-card__kicker">
           {record.challenged ? (record.overturned ? 'ABS · OVERTURNED' : 'ABS · CONFIRMED') : 'K-ZONE REPLAY'}
@@ -116,6 +119,13 @@ export function ReplayCard({ record }: { record: CallRecord }) {
         <VerdictChip record={record} />
       </div>
       <KZone record={record} />
+      {pitch && (
+        <div className="replay-card__pitch">
+          <i style={{ background: PITCH_COLORS[pitch.typeKey] }} />
+          {Math.round(pitch.mph)} MPH · {pitch.typeName.toUpperCase()}
+          <span>{Math.abs(record.edgeDistIn) < 0.05 ? 'ON THE BLACK' : `${Math.abs(record.edgeDistIn).toFixed(1)}" ${record.truthStrike ? 'INSIDE' : 'OFF'}`}</span>
+        </div>
+      )}
       <div className="replay-card__calls">
         <span>
           YOUR CALL <b>{record.hesitated ? '—' : record.playerCall.toUpperCase()}</b>

@@ -1,20 +1,25 @@
+import { PerformanceMonitor } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { audio } from './audio/engine'
+import { installFxDirector } from './scene/fx'
 import { SceneRoot } from './scene/SceneRoot'
 import { useGame } from './store/game'
 import { useSettings, type Quality } from './store/settings'
+import { CoachTips } from './ui/CoachTips'
 import { DebugPanel } from './ui/DebugPanel'
-import { EndScreen } from './ui/EndScreen'
+import { EndScreen, playAgain } from './ui/EndScreen'
 import { ErrorBoundary } from './ui/ErrorBoundary'
+import { HowToPlay } from './ui/HowToPlay'
 import { Hud, toggleFullscreen } from './ui/Hud'
+import { Loader } from './ui/Loader'
 import { SettingsModal } from './ui/SettingsModal'
-import { StartScreen } from './ui/StartScreen'
+import { StartScreen, startSolo } from './ui/StartScreen'
 import { useUi } from './store/ui'
 import { MultiplayerSurface } from './multiplayer/MultiplayerSurface'
 import { useMultiplayer } from './multiplayer/store'
 
-const DPR_CAP: Record<Quality, number> = { low: 1.25, med: 1.5, high: 2 }
+const DPR_CAP: Record<Quality, number> = { low: 1.25, med: 1.6, high: 2 }
 
 declare global {
   interface Window {
@@ -24,10 +29,15 @@ declare global {
 
 export default function App() {
   const quality = useSettings((s) => s.quality)
+  const colorblind = useSettings((s) => s.colorblind)
   const mode = useGame((s) => s.mode)
+  const cap = DPR_CAP[quality]
+  const [dpr, setDpr] = useState(cap)
+  useEffect(() => setDpr(cap), [cap])
 
   // Boot: prepare the first ninth.
   useEffect(() => {
+    installFxDirector()
     useGame.getState().newGame()
     window.__ump = { game: useGame, settings: useSettings }
     const params = new URLSearchParams(location.search)
@@ -47,6 +57,8 @@ export default function App() {
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) return
       const g = useGame.getState()
+      const ui = useUi.getState()
+      const overlayOpen = ui.settingsOpen || ui.howToOpen || useMultiplayer.getState().open
       switch (e.key) {
         case 'b': case 'B': case 'ArrowLeft':
           e.preventDefault()
@@ -60,16 +72,27 @@ export default function App() {
           break
         case ' ':
           e.preventDefault()
-          if (g.mode === 'multiplayer') break
+          if (g.mode === 'multiplayer' || overlayOpen) break
+          if (g.phase === 'menu') startSolo()
+          else g.hurry()
+          break
+        case 'Enter':
+          if (g.mode === 'multiplayer' || overlayOpen) break
+          if (target?.tagName === 'BUTTON') break
           if (g.phase === 'menu') {
-            g.playBall()
-          } else g.hurry()
+            e.preventDefault()
+            startSolo()
+          } else if (g.phase === 'inningOver') {
+            e.preventDefault()
+            playAgain(false)
+          }
           break
         case 'Escape': {
-          const ui = useUi.getState()
-          if (ui.settingsOpen) {
+          if (ui.howToOpen) {
+            ui.set({ howToOpen: false })
+          } else if (ui.settingsOpen) {
             ui.set({ settingsOpen: false })
-            if (g.mode !== 'multiplayer' && g.phase !== 'menu' && g.phase !== 'inningOver') g.setPaused(false)
+            if (g.mode !== 'multiplayer' && g.phase !== 'menu' && g.phase !== 'inningOver' && !g.pauseMenuOpen) g.setPaused(false)
           } else if (g.mode !== 'multiplayer' && g.phase !== 'menu' && g.phase !== 'inningOver') {
             g.setPaused(!g.paused, true)
           }
@@ -118,25 +141,40 @@ export default function App() {
     return useSettings.subscribe(apply)
   }, [])
 
+  // Tap / click the field to skip the between-pitch beats (like SPACE).
+  const onStagePointer = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).tagName !== 'CANVAS') return
+    const g = useGame.getState()
+    if (g.mode === 'single' && !g.paused) g.hurry()
+  }
+
   return (
-    <div className={`app ${mode === 'multiplayer' ? 'app--multiplayer' : ''}`}>
+    <div className={`app ${mode === 'multiplayer' ? 'app--multiplayer' : ''} ${colorblind ? 'cb' : ''}`}>
       <ErrorBoundary>
-        <Canvas
-          className="stage"
-          shadows={quality !== 'low'}
-          dpr={[1, DPR_CAP[quality]]}
-          camera={{ fov: 55, near: 0.06, far: 2600, position: [0, 3.65, 6] }}
-          gl={{ antialias: true, powerPreference: 'high-performance' }}
-        >
-          <SceneRoot />
-        </Canvas>
+        <div className="stage" onPointerDown={onStagePointer}>
+          <Canvas
+            shadows={quality !== 'low' ? 'percentage' : false}
+            dpr={[1, dpr]}
+            camera={{ fov: 44, near: 0.06, far: 4200, position: [0, 120, 300] }}
+            gl={{ antialias: quality === 'low', powerPreference: 'high-performance', stencil: false }}
+          >
+            <PerformanceMonitor
+              onDecline={() => setDpr((d) => Math.max(1, d - 0.25))}
+              onIncline={() => setDpr((d) => Math.min(cap, d + 0.25))}
+            />
+            <SceneRoot />
+          </Canvas>
+        </div>
       </ErrorBoundary>
       <Hud />
+      <CoachTips />
       <StartScreen />
       <EndScreen />
+      <HowToPlay />
       <SettingsModal />
       <DebugPanel />
       <MultiplayerSurface />
+      <Loader />
     </div>
   )
 }

@@ -101,7 +101,7 @@ function StaticSegment({
   return (
     <mesh position={midpoint} quaternion={quaternion} castShadow>
       <capsuleGeometry args={[radius, Math.max(0.02, distance - radius * 2), 5, 10]} />
-      <meshStandardMaterial color={color} roughness={roughness} />
+      <meshPhysicalMaterial color={color} roughness={roughness} sheen={roughness > 0.6 ? 0.6 : 0} sheenRoughness={0.55} sheenColor="#ffffff" />
     </mesh>
   )
 }
@@ -319,7 +319,7 @@ export function Batter({ batter }: { batter: BatterDef }) {
                     {/* Knicker cuff just below the knee */}
                     <mesh position={[kneeX, kneeY - 0.13, 0.035]}>
                       <cylinderGeometry args={[0.175 * body, 0.16 * body, 0.16, 12]} />
-                      <meshStandardMaterial color={PANT} roughness={0.82} />
+                      <meshPhysicalMaterial color={PANT} roughness={0.82} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
                     </mesh>
                     <mesh position={[(footX + kneeX) / 2, (0.3 + kneeY) / 2 + 0.05, footZ * 0.5 + 0.02]} rotation={[0, 0, side * -0.08]}>
                       <cylinderGeometry args={[0.152 * body, 0.152 * body, 0.09, 12]} />
@@ -330,7 +330,7 @@ export function Batter({ batter }: { batter: BatterDef }) {
                 {/* Knee cap */}
                 <mesh position={[kneeX, kneeY, 0.04]} scale={[1, 0.9, 0.94]} castShadow>
                   <sphereGeometry args={[0.205 * body, 12, 9]} />
-                  <meshStandardMaterial color={PANT} roughness={0.82} />
+                  <meshPhysicalMaterial color={PANT} roughness={0.82} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
                 </mesh>
                 {/* Lead-shin guard (over the sock, facing the pitch) */}
                 {isLead && look.legGuard && (
@@ -364,7 +364,7 @@ export function Batter({ batter }: { batter: BatterDef }) {
                 {/* Ankle cuff: sock or long-pant break over the shoe */}
                 <mesh position={[footX, 0.26, footZ]}>
                   <cylinderGeometry args={[0.16 * body, 0.17 * body, 0.14, 12]} />
-                  <meshStandardMaterial color={look.highSocks ? jersey : PANT} roughness={0.82} />
+                  <meshPhysicalMaterial color={look.highSocks ? jersey : PANT} roughness={0.82} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
                 </mesh>
               </group>
             )
@@ -373,7 +373,7 @@ export function Batter({ batter }: { batter: BatterDef }) {
           {/* ---------- seat, belt, buckle, loops ---------- */}
           <mesh position={[0, hipY - 0.08, 0]} scale={[0.78 * body, 0.42, 0.52 * body]} castShadow>
             <sphereGeometry args={[0.62, 18, 12]} />
-            <meshStandardMaterial color={PANT} roughness={0.82} />
+            <meshPhysicalMaterial color={PANT} roughness={0.82} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
           </mesh>
           {/* Belt hugs the torso's elliptical cross-section; buckle up front. */}
           <mesh position={[0, hipY + 0.18, 0]} scale={[1, 1, 0.84]}>
@@ -389,17 +389,17 @@ export function Batter({ batter }: { batter: BatterDef }) {
           <group ref={torsoRef} position={[0, hipY + 0.17, 0]}>
             <mesh position={[0, torsoHeight * 0.48, 0]} scale={[body, 1, body * 0.82]} castShadow>
               <capsuleGeometry args={[0.42, Math.max(0.3, torsoHeight - 0.55), 6, 14]} />
-              <meshStandardMaterial color={jersey} roughness={0.74} />
+              <meshPhysicalMaterial color={jersey} roughness={0.74} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
             </mesh>
             {/* Shoulder yoke + deltoid caps */}
             <mesh position={[0, torsoHeight * 0.78, 0]} scale={[1.28 * body + batter.build * 0.06, 0.34, 0.78 * body]} castShadow>
               <sphereGeometry args={[0.45, 16, 10]} />
-              <meshStandardMaterial color={jersey} roughness={0.72} />
+              <meshPhysicalMaterial color={jersey} roughness={0.72} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
             </mesh>
             {[shoulderLead, shoulderBack].map((s, i) => (
               <mesh key={i} position={[s[0] * 1.12, s[1], s[2]]} castShadow>
                 <sphereGeometry args={[0.165 * body, 12, 9]} />
-                <meshStandardMaterial color={jersey} roughness={0.72} />
+                <meshPhysicalMaterial color={jersey} roughness={0.72} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
               </mesh>
             ))}
             {/* Button placket + buttons on the chest */}
@@ -516,20 +516,20 @@ export function Batter({ batter }: { batter: BatterDef }) {
               {/* Batting helmet: gloss shell, brim, flap on the pitcher side, C-flap */}
               <mesh position={[0, 0.31, 0]} castShadow>
                 <sphereGeometry args={[0.315, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.62]} />
-                <meshStandardMaterial color={jersey} roughness={0.24} metalness={0.22} />
+                <meshPhysicalMaterial color={jersey} roughness={0.28} metalness={0.15} clearcoat={1} clearcoatRoughness={0.06} />
               </mesh>
               <mesh position={[0, 0.25, -0.27]} scale={[1, 0.3, 1]}>
                 <sphereGeometry args={[0.23, 14, 8]} />
-                <meshStandardMaterial color={jersey} roughness={0.3} metalness={0.15} />
+                <meshPhysicalMaterial color={jersey} roughness={0.3} metalness={0.12} clearcoat={1} clearcoatRoughness={0.08} />
               </mesh>
               <mesh position={[-0.245, 0.16, -0.015]} scale={[0.22, 0.5, 0.42]} castShadow>
                 <sphereGeometry args={[0.3, 12, 8]} />
-                <meshStandardMaterial color={jersey} roughness={0.3} metalness={0.15} />
+                <meshPhysicalMaterial color={jersey} roughness={0.3} metalness={0.12} clearcoat={1} clearcoatRoughness={0.08} />
               </mesh>
               {look.jawGuard && (
                 <mesh position={[-0.19, 0.05, -0.16]} rotation={[0.15, 0.5, 0.35]} scale={[0.16, 0.32, 0.5]}>
                   <sphereGeometry args={[0.28, 10, 8]} />
-                  <meshStandardMaterial color={jersey} roughness={0.3} metalness={0.15} />
+                  <meshPhysicalMaterial color={jersey} roughness={0.3} metalness={0.12} clearcoat={1} clearcoatRoughness={0.08} />
                 </mesh>
               )}
               {/* Helmet logo dot */}
@@ -548,7 +548,7 @@ export function Batter({ batter }: { batter: BatterDef }) {
                 <group key={i}>
                   <mesh name={isLead ? 'leadUpper' : 'backUpper'} ref={(m) => { armRef.current.upper = m }} castShadow>
                     <capsuleGeometry args={[0.135 * body, armLen.upper - 0.16, 5, 10]} />
-                    <meshStandardMaterial color={jersey} roughness={0.74} />
+                    <meshPhysicalMaterial color={jersey} roughness={0.74} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
                   </mesh>
                   <mesh name={isLead ? 'leadFore' : 'backFore'} ref={(m) => { armRef.current.fore = m }} castShadow>
                     <capsuleGeometry args={[0.1 * body, armLen.fore - 0.14, 5, 10]} />

@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { clamp } from '../game/rng'
 import { AWAY_TEAM } from '../game/roster'
 import { useGame } from '../store/game'
+import { mitt as mittShared } from './mitt'
 
 /**
  * The catcher crouches just behind the plate, seen from behind. The mitt sets
@@ -37,7 +38,14 @@ export function Catcher() {
     root.position.y = Math.sin(now / 900) * 0.015 + (defensiveChallenge ? 0.12 : 0)
 
     // Mitt target in scene coords (game y=-2.7 plane → scene z=2.7).
-    if (!a || g.phase === 'newBatter' || g.phase === 'reveal' || g.phase === 'swingResult') {
+    const whiff = g.phase === 'swingResult' && a?.outcome?.kind === 'whiff'
+    const holding = a && (g.phase === 'reveal' || whiff) && !a.hitTraj && now - g.phaseStart < 900
+    if (holding && a) {
+      // Stick the receive for a beat, then bring it back with the ball in it.
+      const fx = a.plan.swings ? 0 : a.framing.x
+      const fz = a.plan.swings ? 0 : a.framing.z
+      target.current.set(a.catchPos.x + fx, clamp(a.catchPos.z + fz, 0.3, 4.6), 2.62)
+    } else if (!a || g.phase === 'newBatter' || g.phase === 'reveal' || g.phase === 'swingResult') {
       target.current.set(setupX * 0.6, 1.55, 2.55)
     } else if (g.phase === 'prePitch' || g.phase === 'windup') {
       target.current.set(a.pitch.intended.x, clamp(a.pitch.intended.z, 0.7, 4), 2.62)
@@ -65,9 +73,11 @@ export function Catcher() {
       target.current.set(setupX + 0.45, 2.75 + Math.sin(now / 150) * 0.08, 2.48)
     }
 
-    const speed = g.phase === 'flight' ? 14 : 6
+    const speed = g.phase === 'flight' ? 14 : holding ? 10 : 4.5
     mittPos.current.lerp(target.current, Math.min(1, delta * speed))
     mitt.position.copy(mittPos.current)
+    mittShared.pos.copy(mittPos.current)
+    mittShared.valid = true
 
     // Forearm stretches from the right shoulder to the mitt.
     shoulder.set(root.position.x + 0.55, 1.85, 3.4)
@@ -87,7 +97,7 @@ export function Catcher() {
           <group key={x}>
             <mesh position={[x, 0.62, 0.18]} rotation={[1.25, 0, x * 0.35]} castShadow>
               <capsuleGeometry args={[0.21, 0.85, 4, 10]} />
-              <meshStandardMaterial color="#2c2f36" roughness={0.85} />
+              <meshPhysicalMaterial color="#2c2f36" roughness={0.85} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
             </mesh>
             {/* Shin guards */}
             <mesh position={[x * 1.35, 0.5, -0.32]} rotation={[0.22, 0, 0]} castShadow>
@@ -109,12 +119,12 @@ export function Catcher() {
         {/* Torso, leaning toward the plate */}
         <mesh position={[0, 1.42, 0.12]} rotation={[0.34, 0, 0]} castShadow>
           <capsuleGeometry args={[0.44, 0.95, 4, 12]} />
-          <meshStandardMaterial color={AWAY_TEAM.primary} roughness={0.8} />
+          <meshPhysicalMaterial color={AWAY_TEAM.primary} roughness={0.8} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
         </mesh>
         {/* Chest protector (we see its back edge + shoulders) */}
         <mesh position={[0, 1.62, -0.18]} rotation={[0.34, 0, 0]}>
           <capsuleGeometry args={[0.47, 0.7, 4, 12]} />
-          <meshStandardMaterial color={AWAY_TEAM.accent} roughness={0.65} />
+          <meshPhysicalMaterial color={AWAY_TEAM.accent} roughness={0.65} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
         </mesh>
         {[1.38, 1.58, 1.78].map((y) => (
           <mesh key={y} position={[0, y, -0.58]} rotation={[0.34, 0, 0]}>
@@ -131,7 +141,7 @@ export function Catcher() {
         {/* Helmet (backwards catcher mask reads as a smooth dome from here) */}
         <mesh position={[0, 2.34, 0.06]} castShadow>
           <sphereGeometry args={[0.31, 18, 14]} />
-          <meshStandardMaterial color="#1a1c22" roughness={0.35} metalness={0.2} />
+          <meshPhysicalMaterial color={AWAY_TEAM.primary} roughness={0.55} metalness={0.1} clearcoat={0.6} clearcoatRoughness={0.45} />
         </mesh>
         {/* Mask cage hint */}
         <mesh position={[0, 2.3, -0.2]}>
@@ -155,7 +165,7 @@ export function Catcher() {
       {/* Throwing-side forearm reaching to the mitt */}
       <mesh ref={armRef} castShadow>
         <capsuleGeometry args={[0.13, 1.6, 4, 8]} />
-        <meshStandardMaterial color={AWAY_TEAM.primary} roughness={0.8} />
+        <meshPhysicalMaterial color={AWAY_TEAM.primary} roughness={0.8} sheen={0.6} sheenRoughness={0.55} sheenColor="#ffffff" />
       </mesh>
 
       {/* The mitt — the star of the show */}
